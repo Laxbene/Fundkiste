@@ -8,24 +8,15 @@ import random
 import time
 from datetime import datetime, timedelta
 
-# --- KONFIGURATION & DATUM ---
+# --- KONFIGURATION ---
 HEUTE = datetime(2026, 2, 19).date()
 DB_FILE = "fundstuecke_db.csv"
+IMG_FOLDER = "images"
 
-# 100 Wörter für das Spiel
-SPACE_WORDS = [
-    "Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Bahngeschwindigkeit", 
-    "Bigbang", "Blackhole", "Binary", "Booster", "Cassini", "Comet", "Cosmos", "Countdown", "Crater", 
-    "Darkmatter", "Deepspace", "Dust", "Dwarf", "Earth", "Eclipse", "Eris", "Exoplanet", "Explorer", 
-    "Falcon", "Flare", "Fragment", "Galaxy", "Gamma", "Gasgiant", "Gravity", "Gemini", "Horizon", 
-    "Hubble", "Hyperdrive", "Impact", "Interstellar", "Ion", "ISS", "Jupiter", "Jetstream", "Kepler", 
-    "Komet", "Kosmonaut", "Krater", "Krypton", "Launchpad", "Lightyear", "Luna", "Mars", "Mercury", 
-    "Meteor", "Milkyway", "Moon", "Module", "NASA", "Nebula", "Neptune", "Neutron", "Nova", "Orbit", 
-    "Orion", "Oxygen", "Parallaxe", "Photon", "Planet", "Pluto", "Pulsar", "Quasar", "Radiation", 
-    "Rocket", "Rover", "Satellite", "Saturn", "Shuttle", "Singularity", "Skywalker", "Solar", "Space", 
-    "Spacetime", "Star", "Supernova", "Telescope", "Terra", "Titan", "Trajectory", "Universe", "Uranus", 
-    "Vacuum", "Venus", "Void", "Voyager", "Warp", "Wavelength", "White-Dwarf", "X-Ray", "Zenith", "Zodiac"
-]
+if not os.path.exists(IMG_FOLDER):
+    os.makedirs(IMG_FOLDER)
+
+SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith"]
 
 # --- FUNKTIONEN ---
 @st.cache_resource
@@ -45,108 +36,109 @@ def load_labels(label_path):
 def get_database():
     if os.path.exists(DB_FILE):
         df = pd.read_csv(DB_FILE)
-        df['Funddatum'] = pd.to_datetime(df['Funddatum']).dt.date
-        df['Ablaufdatum'] = pd.to_datetime(df['Ablaufdatum']).dt.date
         return df
-    return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status"])
+    return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
 
 # --- UI SETUP ---
 st.set_page_config(page_title="Fundkiste 2026", layout="wide")
 model = load_my_model()
 labels = load_labels("labels.txt")
 
-# --- SIDEBAR ---
 st.sidebar.title("🏢 Fundbüro-Zentrale")
 auswahl = st.sidebar.radio("Navigation", ["Erfassen", "Datenbank", "Suche", "🎮 Space Typing"])
 
-# --- MODI: ERFASSEN, DATENBANK, SUCHE (IDENTISCH ZU VORHER) ---
+# --- MODUS: ERFASSEN ---
 if auswahl == "Erfassen":
     st.header("📸 Neues Fundstück erfassen")
     uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
     if uploaded_file and model:
         image = Image.open(uploaded_file).convert("RGB")
         st.image(image, caption="Vorschau", width=300)
+        
         img_resized = ImageOps.fit(image, (224, 224), Image.LANCZOS)
         img_array = (np.asarray(img_resized).astype(np.float32) / 127.5) - 1
         pred = model.predict(np.expand_dims(img_array, axis=0))
         klasse = labels.get(np.argmax(pred), "Unbekannt")
+        
         st.info(f"KI-Vorschlag: **{klasse}**")
         with st.form("save_form"):
             final_klasse = st.selectbox("Kategorie", list(labels.values()), index=list(labels.values()).index(klasse))
             beschreibung = st.text_input("Zusatz-Beschreibung")
-            if st.form_submit_button("Speichern"):
+            if st.form_submit_button("In Datenbank speichern"):
+                # Bild speichern
+                img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                img_path = os.path.join(IMG_FOLDER, img_filename)
+                image.save(img_path)
+                
                 df = get_database()
-                neu = {"ID": len(df)+1, "Kategorie": final_klasse, "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), "Status": beschreibung}
+                neu = {
+                    "ID": len(df)+1, 
+                    "Kategorie": final_klasse, 
+                    "Funddatum": HEUTE, 
+                    "Ablaufdatum": HEUTE+timedelta(days=30), 
+                    "Status": beschreibung,
+                    "Bild_Pfad": img_path
+                }
                 pd.concat([df, pd.DataFrame([neu])], ignore_index=True).to_csv(DB_FILE, index=False)
                 st.success("Gespeichert!")
 
+# --- MODUS: DATENBANK ---
 elif auswahl == "Datenbank":
-    st.header("📊 Datenbank")
+    st.header("📊 Datenbank mit Fotos")
     df = get_database()
     if not df.empty:
-        st.dataframe(df.style.apply(lambda r: ['background-color: #ff4b4b' if r['Ablaufdatum'] <= HEUTE else '' for _ in r], axis=1), use_container_width=True)
+        for idx, row in df.iterrows():
+            col1, col2, col3 = st.columns([1, 3, 2])
+            with col1:
+                if os.path.exists(str(row['Bild_Pfad'])):
+                    st.image(row['Bild_Pfad'], width=100)
+                else:
+                    st.write("Kein Bild")
+            with col2:
+                st.write(f"**{row['Kategorie']}** (ID: {row['ID']})")
+                st.write(f"Status: {row['Status']}")
+            with col3:
+                farbe = "red" if str(row['Ablaufdatum']) <= str(HEUTE) else "green"
+                st.markdown(f"📅 Ablauf: :{farbe}[{row['Ablaufdatum']}]")
+            st.divider()
+    else:
+        st.write("Datenbank ist leer.")
 
-elif auswahl == "Suche":
-    st.header("🔍 Suche")
-    query = st.text_input("Begriff eingeben...")
-    df = get_database()
-    if query and not df.empty:
-        st.table(df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)])
-
-# --- MODUS: SPACE TYPING GAME (MIT AUTO-CLEAR) ---
+# --- MODUS: SPACE TYPING ---
 elif auswahl == "🎮 Space Typing":
-    st.header("☄️ Space Typer")
-    
-    if 'game_active' not in st.session_state:
-        st.session_state.game_active = False
-        st.session_state.lives = 3
-        st.session_state.score = 0
-        st.session_state.input_key = 0 # Der Trick zum Leeren des Feldes
+    if 'input_key' not in st.session_state: st.session_state.input_key = 0
+    if 'game_active' not in st.session_state: st.session_state.game_active = False
 
     if not st.session_state.game_active:
         if st.button("Spiel STARTEN"):
-            st.session_state.game_active = True
-            st.session_state.lives = 3
-            st.session_state.score = 0
+            st.session_state.game_active, st.session_state.lives, st.session_state.score = True, 3, 0
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            st.session_state.input_key += 1
             st.rerun()
     else:
-        zeit_limit = 7.0
-        vergangene_zeit = time.time() - st.session_state.start_time
-        restzeit = max(0.0, zeit_limit - vergangene_zeit)
+        restzeit = max(0.0, 7.0 - (time.time() - st.session_state.start_time))
+        st.metric("Leben", "❤️" * st.session_state.lives, delta=f"Score: {st.session_state.score}")
+        st.progress(restzeit / 7.0)
+        st.write(f"## Tippe schnell: :orange[{st.session_state.current_word}]")
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Leben", "❤️" * st.session_state.lives)
-        c2.metric("Punkte", st.session_state.score)
-        c3.metric("Zeit", f"{restzeit:.1f}s")
+        # Trick: Das Feld wird bei jedem neuen Wort neu generiert. 
+        # Da es das einzige aktive Textfeld ist, fokussieren Browser es oft automatisch.
+        user_input = st.text_input("Eingabe:", key=f"play_{st.session_state.input_key}").strip()
 
-        st.progress(restzeit / zeit_limit)
-        st.write(f"## Ziel-Wort: :orange[{st.session_state.current_word}]")
-
-        # Dynamischer Key leert das Feld automatisch bei Änderung
-        user_input = st.text_input("Tippe hier:", key=f"input_{st.session_state.input_key}").strip()
-
-        # Check: Richtig getippt?
         if user_input.lower() == st.session_state.current_word.lower():
             st.session_state.score += 10
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            st.session_state.input_key += 1 # Feld wird geleert
-            st.toast("TREFFER!", icon="💥")
+            st.session_state.input_key += 1
             st.rerun()
 
-        # Check: Zeit abgelaufen?
         if restzeit <= 0:
             st.session_state.lives -= 1
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            st.session_state.input_key += 1 # Feld wird geleert
-            if st.session_state.lives <= 0:
-                st.session_state.game_active = False
+            st.session_state.input_key += 1
+            if st.session_state.lives <= 0: st.session_state.game_active = False
             st.rerun()
         
-        # Schneller Refresh für den Timer
         time.sleep(0.1)
         st.rerun()
