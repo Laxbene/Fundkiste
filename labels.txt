@@ -1,0 +1,4 @@
+0 Schuhe
+1 Brotdose
+2 Handschuhe
+3 Helme
