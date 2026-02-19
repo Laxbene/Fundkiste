@@ -15,7 +15,7 @@ DB_FILE = "fundstuecke_db.csv"
 # 100 Wörter für das Spiel
 SPACE_WORDS = [
     "Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Bahngeschwindigkeit", 
-    "Bigbang", "Blackhole", "Binary", "Booster", "Cassini", "ComHandschuheBrotdoseet", "Cosmos", "Countdown", "Crater", 
+    "Bigbang", "Blackhole", "Binary", "Booster", "Cassini", "Comet", "Cosmos", "Countdown", "Crater", 
     "Darkmatter", "Deepspace", "Dust", "Dwarf", "Earth", "Eclipse", "Eris", "Exoplanet", "Explorer", 
     "Falcon", "Flare", "Fragment", "Galaxy", "Gamma", "Gasgiant", "Gravity", "Gemini", "Horizon", 
     "Hubble", "Hyperdrive", "Impact", "Interstellar", "Ion", "ISS", "Jupiter", "Jetstream", "Kepler", 
@@ -27,7 +27,7 @@ SPACE_WORDS = [
     "Vacuum", "Venus", "Void", "Voyager", "Warp", "Wavelength", "White-Dwarf", "X-Ray", "Zenith", "Zodiac"
 ]
 
-# --- FUNKTIONEN (Modell/Labels/DB wie zuvor) ---
+# --- FUNKTIONEN ---
 @st.cache_resource
 def load_my_model():
     try: return tf.keras.models.load_model('keras_model.h5', compile=False)
@@ -59,26 +59,49 @@ labels = load_labels("labels.txt")
 st.sidebar.title("🏢 Fundbüro-Zentrale")
 auswahl = st.sidebar.radio("Navigation", ["Erfassen", "Datenbank", "Suche", "🎮 Space Typing"])
 
-# --- MODI (Erfassen, Datenbank, Suche wie zuvor) ---
+# --- MODI: ERFASSEN, DATENBANK, SUCHE (IDENTISCH ZU VORHER) ---
 if auswahl == "Erfassen":
     st.header("📸 Neues Fundstück erfassen")
-    # ... (Code wie oben)
+    uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
+    if uploaded_file and model:
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Vorschau", width=300)
+        img_resized = ImageOps.fit(image, (224, 224), Image.LANCZOS)
+        img_array = (np.asarray(img_resized).astype(np.float32) / 127.5) - 1
+        pred = model.predict(np.expand_dims(img_array, axis=0))
+        klasse = labels.get(np.argmax(pred), "Unbekannt")
+        st.info(f"KI-Vorschlag: **{klasse}**")
+        with st.form("save_form"):
+            final_klasse = st.selectbox("Kategorie", list(labels.values()), index=list(labels.values()).index(klasse))
+            beschreibung = st.text_input("Zusatz-Beschreibung")
+            if st.form_submit_button("Speichern"):
+                df = get_database()
+                neu = {"ID": len(df)+1, "Kategorie": final_klasse, "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), "Status": beschreibung}
+                pd.concat([df, pd.DataFrame([neu])], ignore_index=True).to_csv(DB_FILE, index=False)
+                st.success("Gespeichert!")
+
 elif auswahl == "Datenbank":
     st.header("📊 Datenbank")
-    # ... (Code wie oben)
+    df = get_database()
+    if not df.empty:
+        st.dataframe(df.style.apply(lambda r: ['background-color: #ff4b4b' if r['Ablaufdatum'] <= HEUTE else '' for _ in r], axis=1), use_container_width=True)
+
 elif auswahl == "Suche":
     st.header("🔍 Suche")
-    # ... (Code wie oben)
+    query = st.text_input("Begriff eingeben...")
+    df = get_database()
+    if query and not df.empty:
+        st.table(df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)])
 
-# --- MODUS: SPACE TYPING GAME ---
+# --- MODUS: SPACE TYPING GAME (MIT AUTO-CLEAR) ---
 elif auswahl == "🎮 Space Typing":
-    st.header("☄️ Space Typer: Zerstöre die Planeten!")
+    st.header("☄️ Space Typer")
     
-    # Initialisierung Game State
     if 'game_active' not in st.session_state:
         st.session_state.game_active = False
         st.session_state.lives = 3
         st.session_state.score = 0
+        st.session_state.input_key = 0 # Der Trick zum Leeren des Feldes
 
     if not st.session_state.game_active:
         if st.button("Spiel STARTEN"):
@@ -87,49 +110,43 @@ elif auswahl == "🎮 Space Typing":
             st.session_state.score = 0
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
+            st.session_state.input_key += 1
             st.rerun()
     else:
-        # Timer Logik (z.B. 10 Sekunden pro Wort)
-        zeit_limit = 8 # Sekunden
+        zeit_limit = 7.0
         vergangene_zeit = time.time() - st.session_state.start_time
         restzeit = max(0.0, zeit_limit - vergangene_zeit)
 
-        # UI Anzeige
         c1, c2, c3 = st.columns(3)
         c1.metric("Leben", "❤️" * st.session_state.lives)
         c2.metric("Punkte", st.session_state.score)
         c3.metric("Zeit", f"{restzeit:.1f}s")
 
         st.progress(restzeit / zeit_limit)
-        st.write(f"## Ziel-Wort: :blue[{st.session_state.current_word}]")
+        st.write(f"## Ziel-Wort: :orange[{st.session_state.current_word}]")
 
-        # Eingabefeld (Auto-Erkennung)
-        user_input = st.text_input("Tippe das Wort so schnell du kannst:", key="typing_box").strip()
+        # Dynamischer Key leert das Feld automatisch bei Änderung
+        user_input = st.text_input("Tippe hier:", key=f"input_{st.session_state.input_key}").strip()
 
-        # 1. Check: Wort richtig getippt? (Auto-Erkennung)
+        # Check: Richtig getippt?
         if user_input.lower() == st.session_state.current_word.lower():
             st.session_state.score += 10
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            st.toast("TREFFER! +10 Punkte", icon="💥")
+            st.session_state.input_key += 1 # Feld wird geleert
+            st.toast("TREFFER!", icon="💥")
             st.rerun()
 
-        # 2. Check: Zeit abgelaufen?
+        # Check: Zeit abgelaufen?
         if restzeit <= 0:
             st.session_state.lives -= 1
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            if st.session_state.lives > 0:
-                st.warning("Zeit abgelaufen! Ein Leben verloren.")
-                time.sleep(1)
-                st.rerun()
-            else:
+            st.session_state.input_key += 1 # Feld wird geleert
+            if st.session_state.lives <= 0:
                 st.session_state.game_active = False
-                st.error(f"GAME OVER! Dein Score: {st.session_state.score}")
-                if st.button("Erneut versuchen"):
-                    st.rerun()
-        
-        # Automatischer Refresh für den Timer (alle 0.1 Sek)
-        if st.session_state.game_active:
-            time.sleep(0.1)
             st.rerun()
+        
+        # Schneller Refresh für den Timer
+        time.sleep(0.1)
+        st.rerun()
