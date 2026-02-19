@@ -7,8 +7,77 @@ import os
 import random
 import time
 from datetime import datetime, timedelta
+import streamlit.components.v1 as components # Für den Fokus-Hack
 
-# --- KONFIGURATION ---
+# --- KONFIGURATION ---# --- MODUS: SPACE TYPING GAME ---
+elif auswahl == "🎮 Space Typing":
+    st.header("☄️ Space Typer")
+    
+    # Initialisierung Game State
+    if 'input_key' not in st.session_state: st.session_state.input_key = 0
+    if 'game_active' not in st.session_state: st.session_state.game_active = False
+
+    if not st.session_state.game_active:
+        if st.button("Spiel STARTEN"):
+            st.session_state.game_active, st.session_state.lives, st.session_state.score = True, 3, 0
+            st.session_state.current_word = random.choice(SPACE_WORDS)
+            st.session_state.start_time = time.time()
+            st.rerun()
+    else:
+        # Zeitberechnung
+        zeit_limit = 7.0
+        vergangene_zeit = time.time() - st.session_state.start_time
+        restzeit = max(0.0, zeit_limit - vergangene_zeit)
+
+        # UI Anzeige
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Leben", "❤️" * st.session_state.lives)
+        c2.metric("Punkte", st.session_state.score)
+        c3.metric("Zeit", f"{restzeit:.1f}s")
+
+        st.progress(restzeit / zeit_limit)
+        st.write(f"## Tippe: :orange[{st.session_state.current_word}]")
+
+        # DER TRICK: Ein eindeutiger ID-Name für das Feld
+        field_id = f"input_{st.session_state.input_key}"
+        
+        # Eingabefeld
+        user_input = st.text_input("Deine Eingabe:", key=field_id).strip()
+
+        # FOKUS-HACK: JavaScript, das das Feld nach dem Laden automatisch fokussiert
+        components.html(
+            f"""
+            <script>
+                var input = window.parent.document.querySelector("input[id*='{field_id}']");
+                if (input) {{
+                    input.focus();
+                }}
+            </script>
+            """,
+            height=0,
+        )
+
+        # Logik: Wort richtig getippt?
+        if user_input.lower() == st.session_state.current_word.lower():
+            st.session_state.score += 10
+            st.session_state.current_word = random.choice(SPACE_WORDS)
+            st.session_state.start_time = time.time()
+            st.session_state.input_key += 1 # Ändert den Key -> Feld wird leer
+            st.rerun()
+
+        # Logik: Zeit abgelaufen?
+        if restzeit <= 0:
+            st.session_state.lives -= 1
+            st.session_state.current_word = random.choice(SPACE_WORDS)
+            st.session_state.start_time = time.time()
+            st.session_state.input_key += 1 # Ändert den Key -> Feld wird leer
+            if st.session_state.lives <= 0:
+                st.session_state.game_active = False
+            st.rerun()
+        
+        # Kurze Pause für den Timer-Refresh
+        time.sleep(0.1)
+        st.rerun()
 HEUTE = datetime(2026, 2, 19).date()
 DB_FILE = "fundstuecke_db.csv"
 IMG_FOLDER = "images"
@@ -104,8 +173,11 @@ elif auswahl == "Datenbank":
     else:
         st.write("Datenbank ist leer.")
 
-# --- MODUS: SPACE TYPING ---
+# --- MODUS: SPACE TYPING GAME ---
 elif auswahl == "🎮 Space Typing":
+    st.header("☄️ Space Typer")
+    
+    # Initialisierung Game State
     if 'input_key' not in st.session_state: st.session_state.input_key = 0
     if 'game_active' not in st.session_state: st.session_state.game_active = False
 
@@ -116,29 +188,57 @@ elif auswahl == "🎮 Space Typing":
             st.session_state.start_time = time.time()
             st.rerun()
     else:
-        restzeit = max(0.0, 7.0 - (time.time() - st.session_state.start_time))
-        st.metric("Leben", "❤️" * st.session_state.lives, delta=f"Score: {st.session_state.score}")
-        st.progress(restzeit / 7.0)
-        st.write(f"## Tippe schnell: :orange[{st.session_state.current_word}]")
+        # Zeitberechnung
+        zeit_limit = 7.0
+        vergangene_zeit = time.time() - st.session_state.start_time
+        restzeit = max(0.0, zeit_limit - vergangene_zeit)
 
-        # Trick: Das Feld wird bei jedem neuen Wort neu generiert. 
-        # Da es das einzige aktive Textfeld ist, fokussieren Browser es oft automatisch.
-        user_input = st.text_input("Eingabe:", key=f"play_{st.session_state.input_key}").strip()
+        # UI Anzeige
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Leben", "❤️" * st.session_state.lives)
+        c2.metric("Punkte", st.session_state.score)
+        c3.metric("Zeit", f"{restzeit:.1f}s")
 
+        st.progress(restzeit / zeit_limit)
+        st.write(f"## Tippe: :orange[{st.session_state.current_word}]")
+
+        # DER TRICK: Ein eindeutiger ID-Name für das Feld
+        field_id = f"input_{st.session_state.input_key}"
+        
+        # Eingabefeld
+        user_input = st.text_input("Deine Eingabe:", key=field_id).strip()
+
+        # FOKUS-HACK: JavaScript, das das Feld nach dem Laden automatisch fokussiert
+        components.html(
+            f"""
+            <script>
+                var input = window.parent.document.querySelector("input[id*='{field_id}']");
+                if (input) {{
+                    input.focus();
+                }}
+            </script>
+            """,
+            height=0,
+        )
+
+        # Logik: Wort richtig getippt?
         if user_input.lower() == st.session_state.current_word.lower():
             st.session_state.score += 10
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            st.session_state.input_key += 1
+            st.session_state.input_key += 1 # Ändert den Key -> Feld wird leer
             st.rerun()
 
+        # Logik: Zeit abgelaufen?
         if restzeit <= 0:
             st.session_state.lives -= 1
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            st.session_state.input_key += 1
-            if st.session_state.lives <= 0: st.session_state.game_active = False
+            st.session_state.input_key += 1 # Ändert den Key -> Feld wird leer
+            if st.session_state.lives <= 0:
+                st.session_state.game_active = False
             st.rerun()
         
+        # Kurze Pause für den Timer-Refresh
         time.sleep(0.1)
         st.rerun()
