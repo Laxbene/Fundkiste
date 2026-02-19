@@ -18,7 +18,7 @@ if not os.path.exists(IMG_FOLDER):
     os.makedirs(IMG_FOLDER)
 
 # 100 Wörter für das Spiel
-SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith", "X-Ray", "Zodiac", "Proton", "Neutron", "Quasar", "Pulsar"]
+SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith"]
 
 # --- FUNKTIONEN ---
 @st.cache_resource
@@ -43,12 +43,21 @@ def get_database():
         return pd.read_csv(DB_FILE)
     return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
 
+def delete_entry(entry_id):
+    df = get_database()
+    # Bild löschen, falls vorhanden
+    img_to_delete = df.loc[df['ID'] == entry_id, 'Bild_Pfad'].values
+    if len(img_to_delete) > 0 and os.path.exists(str(img_to_delete[0])):
+        os.remove(str(img_to_delete[0]))
+    # Aus DF entfernen und speichern
+    df = df[df['ID'] != entry_id]
+    df.to_csv(DB_FILE, index=False)
+
 # --- UI SETUP ---
 st.set_page_config(page_title="Fundkiste 2026", layout="wide")
 model = load_my_model()
 labels = load_labels("labels.txt")
 
-# --- SIDEBAR NAVIGATION ---
 st.sidebar.title("🏢 Fundbüro-Zentrale")
 auswahl = st.sidebar.radio("Navigation", ["Erfassen", "Datenbank", "Suche", "🎮 Space Typing"])
 
@@ -77,7 +86,8 @@ if auswahl == "Erfassen":
                 
                 df = get_database()
                 neu = {
-                    "ID": len(df)+1, "Kategorie": final_klasse, 
+                    "ID": int(time.time()), # Eindeutige ID über Timestamp
+                    "Kategorie": final_klasse, 
                     "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), 
                     "Status": beschreibung, "Bild_Pfad": img_path
                 }
@@ -90,36 +100,36 @@ elif auswahl == "Datenbank":
     df = get_database()
     if not df.empty:
         for idx, row in df.iterrows():
-            col1, col2, col3 = st.columns([1, 3, 2])
+            col1, col2, col3, col4 = st.columns([1, 2, 2, 1])
             with col1:
                 if os.path.exists(str(row['Bild_Pfad'])):
                     st.image(row['Bild_Pfad'], width=100)
-                else:
-                    st.write("🖼️")
+                else: st.write("🖼️")
             with col2:
-                st.write(f"**{row['Kategorie']}** (ID: {row['ID']})")
+                st.write(f"**{row['Kategorie']}**")
                 st.write(f"Notiz: {row['Status']}")
             with col3:
-                ist_abgelaufen = str(row['Ablaufdatum']) <= str(HEUTE)
-                farbe = "red" if ist_abgelaufen else "green"
+                farbe = "red" if str(row['Ablaufdatum']) <= str(HEUTE) else "green"
                 st.markdown(f"📅 Ablauf: :{farbe}[{row['Ablaufdatum']}]")
+            with col4:
+                if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
+                    delete_entry(row['ID'])
+                    st.rerun()
             st.divider()
     else:
-        st.write("Die Datenbank ist noch leer.")
+        st.write("Die Datenbank ist leer.")
 
 # --- MODUS: SUCHE ---
 elif auswahl == "Suche":
     st.header("🔍 Suche")
-    query = st.text_input("Nach Kategorie oder Beschreibung suchen...")
+    query = st.text_input("Suchen...")
     df = get_database()
     if query and not df.empty:
         ergebnis = df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)]
-        st.dataframe(ergebnis, use_container_width=True)
+        st.dataframe(ergebnis)
 
 # --- MODUS: SPACE TYPING GAME ---
 elif auswahl == "🎮 Space Typing":
-    st.header("☄️ Space Typer")
-    
     if 'game_active' not in st.session_state: st.session_state.game_active = False
     if 'input_key' not in st.session_state: st.session_state.input_key = 0
 
@@ -134,23 +144,25 @@ elif auswahl == "🎮 Space Typing":
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Leben", "❤️" * st.session_state.lives)
-        c2.metric("Punkte", st.session_state.score)
+        c2.metric("Score", st.session_state.score)
         c3.metric("Zeit", f"{restzeit:.1f}s")
         
         st.progress(restzeit / 7.0)
-        st.write(f"## Tippe: :orange[{st.session_state.current_word}]")
+        st.write(f"## Ziel: :orange[{st.session_state.current_word}]")
 
         field_id = f"typing_field_{st.session_state.input_key}"
-        user_input = st.text_input("Eingabe:", key=field_id).strip()
+        # Automatische Überprüfung durch direkten Vergleich des Rückgabewerts
+        user_input = st.text_input("Tippe hier (automatische Erkennung):", key=field_id).strip()
 
-        # JS Fokus-Hack
+        # JS Fokus-Hack, damit der Cursor immer im Feld bleibt
         components.html(f"""<script>var input = window.parent.document.querySelector("input[id*='{field_id}']"); if(input) {{ input.focus(); }}</script>""", height=0)
 
+        # Logik: Automatische Erkennung ohne Enter
         if user_input.lower() == st.session_state.current_word.lower():
             st.session_state.score += 10
             st.session_state.current_word = random.choice(SPACE_WORDS)
             st.session_state.start_time = time.time()
-            st.session_state.input_key += 1
+            st.session_state.input_key += 1 # Leert das Feld
             st.rerun()
 
         if restzeit <= 0:
