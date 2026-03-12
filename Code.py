@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 # --- KONFIGURATION ---
-HEUTE = datetime(2026, 3, 12).date() # Aktualisiert auf das heutige Datum
+HEUTE = datetime(2026, 3, 12).date()
 DB_FILE = "fundstuecke_db.csv"
 IMG_FOLDER = "images"
 CONFIDENCE_THRESHOLD = 0.60
@@ -36,14 +36,17 @@ def load_labels(label_path):
     return d
 
 def get_database():
-    if os.path.exists(DB_FILE): return pd.read_csv(DB_FILE)
+    if os.path.exists(DB_FILE): 
+        df = pd.read_csv(DB_FILE)
+        return df
     return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
 
 def delete_entry(entry_id):
     df = get_database()
     img_to_delete = df.loc[df['ID'] == entry_id, 'Bild_Pfad'].values
     if len(img_to_delete) > 0 and os.path.exists(str(img_to_delete[0])):
-        os.remove(str(img_to_delete[0]))
+        try: os.remove(str(img_to_delete[0]))
+        except: pass
     df = df[df['ID'] != entry_id]
     df.to_csv(DB_FILE, index=False)
 
@@ -70,129 +73,142 @@ if auswahl == "Erfassen":
         confidence = pred[0][idx]
         
         if confidence < CONFIDENCE_THRESHOLD:
-            st.warning(f"⚠️ Unsicher ({confidence:.1%}).")
+            st.warning(f"⚠️ Nicht eindeutig erkannt ({confidence:.1%}).")
             klasse, can_save = "Nicht erkannt", False
         else:
             klasse, can_save = labels.get(idx, "Unbekannt"), True
             st.success(f"✅ Erkannt: **{klasse}** ({confidence:.1%})")
         
         with st.form("save_form"):
-            k_liste = list(labels.values()) + (["Nicht erkannt"] if klasse == "Nicht erkannt" else [])
+            k_liste = list(labels.values())
+            if "Nicht erkannt" not in k_liste: k_liste.append("Nicht erkannt")
             final_klasse = st.selectbox("Kategorie", k_liste, index=k_liste.index(klasse))
-            beschreibung = st.text_input("Notiz")
-            if st.form_submit_button("Speichern", disabled=not can_save):
+            beschreibung = st.text_input("Zusatz-Info (Farbe, Marke...)")
+            submit = st.form_submit_button("Speichern", disabled=not can_save)
+            if submit:
                 img_path = os.path.join(IMG_FOLDER, f"{int(time.time())}.jpg")
                 image.save(img_path)
                 df = get_database()
                 neu = {"ID": int(time.time()), "Kategorie": final_klasse, "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), "Status": beschreibung, "Bild_Pfad": img_path}
                 pd.concat([df, pd.DataFrame([neu])], ignore_index=True).to_csv(DB_FILE, index=False)
-                st.success("Gespeichert!")
+                st.success("In Datenbank archiviert!")
 
-# --- MODUS: DATENBANK ---
+# --- MODUS: DATENBANK (FEHLER KORRIGIERT) ---
 elif auswahl == "Datenbank":
-    st.header("📊 Datenbank")
+    st.header("📊 Archivierte Fundstücke")
     df = get_database()
     if not df.empty:
         for _, row in df.iterrows():
             c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
-            with c1: st.image(row['Bild_Pfad'], width=100) if os.path.exists(str(row['Bild_Pfad'])) else st.write("🖼️")
-            with c2: st.write(f"**{row['Kategorie']}**\n\n{row['Status']}")
-            with c3: st.write(f"📅 Ablauf: {row['Ablaufdatum']}")
+            with c1:
+                # Hier wurde die Logik korrigiert: Kein Einzeiler mehr!
+                path = str(row['Bild_Pfad'])
+                if os.path.exists(path):
+                    st.image(path, width=120)
+                else:
+                    st.write("🖼️ (Kein Bild)")
+            with c2:
+                st.write(f"**{row['Kategorie']}**")
+                st.write(f"_{row['Status']}_")
+            with c3:
+                st.write(f"📅 Fund: {row['Funddatum']}")
+                st.write(f"⏰ Ablauf: {row['Ablaufdatum']}")
             with c4: 
-                if st.button("✅ Weg", key=f"d_{row['ID']}"):
+                if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
                     delete_entry(row['ID'])
                     st.rerun()
             st.divider()
+    else:
+        st.info("Die Datenbank ist aktuell leer.")
 
 # --- MODUS: SUCHE ---
 elif auswahl == "Suche":
-    st.header("🔍 Suche")
-    query = st.text_input("Begriff...")
+    st.header("🔍 Schnellsuche")
+    query = st.text_input("Suchbegriff eingeben...")
     df = get_database()
     if query and not df.empty:
-        st.dataframe(df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)])
+        res = df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)]
+        st.dataframe(res, use_container_width=True)
 
 # --- MODUS: SPACE TYPING ---
 elif auswahl == "🎮 Space Typing":
+    st.header("☄️ Space Typer")
     if 'input_key' not in st.session_state: st.session_state.input_key = 0
     if 'game_active' not in st.session_state: st.session_state.game_active = False
+    
     if not st.session_state.game_active:
-        if st.button("START"):
+        if st.button("Spiel Starten"):
             st.session_state.game_active, st.session_state.lives, st.session_state.score, st.session_state.current_word, st.session_state.start_time = True, 3, 0, random.choice(SPACE_WORDS), time.time()
             st.rerun()
     else:
         rest = max(0.0, 7.0 - (time.time() - st.session_state.start_time))
-        st.write(f"### Wort: :blue[{st.session_state.current_word}] | ❤️ {st.session_state.lives} | ⭐ {st.session_state.score}")
+        st.write(f"### Wort: :orange[{st.session_state.current_word}] | ❤️ {st.session_state.lives} | ⭐ {st.session_state.score}")
         st.progress(rest / 7.0)
-        fid = f"t_{st.session_state.input_key}"
+        fid = f"typer_{st.session_state.input_key}"
         ui = st.text_input("Tippen:", key=fid).strip()
         components.html(f"<script>window.parent.document.querySelector('input[id*=\"{fid}\"]').focus();</script>", height=0)
+        
         if ui.lower() == st.session_state.current_word.lower():
-            st.session_state.score += 10; st.session_state.current_word = random.choice(SPACE_WORDS); st.session_state.start_time = time.time(); st.session_state.input_key += 1
+            st.session_state.score += 10
+            st.session_state.current_word = random.choice(SPACE_WORDS)
+            st.session_state.start_time = time.time()
+            st.session_state.input_key += 1
             st.rerun()
         if rest <= 0:
-            st.session_state.lives -= 1; st.session_state.start_time = time.time(); st.session_state.input_key += 1
+            st.session_state.lives -= 1
+            st.session_state.start_time = time.time()
+            st.session_state.input_key += 1
             if st.session_state.lives <= 0: st.session_state.game_active = False
             st.rerun()
         time.sleep(0.1); st.rerun()
 
 # --- MODUS: REAKTIONSTEST ---
 elif auswahl == "⚡ Reaktionstest":
-    st.header("⚡ Wie schnell bist du?")
+    st.header("⚡ Reaktionstest")
     if 'rxn_state' not in st.session_state: st.session_state.rxn_state = "idle"
-    
     if st.session_state.rxn_state == "idle":
-        if st.button("Starten"):
+        if st.button("Start"):
             st.session_state.rxn_state = "waiting"
             st.session_state.wait_until = time.time() + random.uniform(2, 5)
             st.rerun()
-            
     elif st.session_state.rxn_state == "waiting":
-        st.error("### WARTEN... (Gleich wird es Grün)")
+        st.error("### WARTEN...")
         if time.time() >= st.session_state.wait_until:
             st.session_state.rxn_state = "go"
             st.session_state.go_start = time.time()
             st.rerun()
         time.sleep(0.05); st.rerun()
-        
     elif st.session_state.rxn_state == "go":
         st.success("### JETZT KLICKEN!!!")
-        if st.button("KLICK!"):
+        if st.button("BÄM!"):
             diff = (time.time() - st.session_state.go_start) * 1000
-            st.session_state.last_result = diff
+            st.session_state.last_res = diff
             st.session_state.rxn_state = "result"
             st.rerun()
-
     elif st.session_state.rxn_state == "result":
-        st.write(f"## Deine Zeit: {st.session_state.last_result:.0f} ms")
+        st.write(f"## {st.session_state.last_res:.0f} ms")
         if st.button("Nochmal"):
             st.session_state.rxn_state = "idle"
             st.rerun()
 
 # --- MODUS: AIM-TRAINER ---
 elif auswahl == "🎯 Aim-Trainer":
-    st.header("🎯 Treffe das Ziel 10-mal!")
-    if 'aim_hits' not in st.session_state:
-        st.session_state.aim_hits = 0
-        st.session_state.aim_start = 0
-
+    st.header("🎯 Aim-Trainer")
+    if 'aim_hits' not in st.session_state: st.session_state.aim_hits = 0
     if st.session_state.aim_hits == 0:
-        if st.button("Starten"):
+        if st.button("Start"):
             st.session_state.aim_hits = 1
             st.session_state.aim_start = time.time()
             st.rerun()
     elif st.session_state.aim_hits <= 10:
-        st.write(f"Treffer: {st.session_state.aim_hits-1} / 10")
-        # Zufällige Positionierung über Spalten
-        cols = st.columns([random.randint(1,10) for _ in range(5)])
-        with cols[random.randint(0,4)]:
-            if st.button("🎯", key=f"target_{st.session_state.aim_hits}"):
+        st.write(f"Ziel {st.session_state.aim_hits}/10")
+        c = st.columns(10)
+        with c[random.randint(0, 9)]:
+            if st.button("🎯", key=f"aim_{st.session_state.aim_hits}"):
                 st.session_state.aim_hits += 1
                 st.rerun()
     else:
-        total_time = time.time() - st.session_state.aim_start
-        st.balloons()
-        st.write(f"## Fertig! Gesamtzeit: {total_time:.2f} Sekunden")
-        if st.button("Neustart"):
+        st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s")
+        if st.button("Reset"):
             st.session_state.aim_hits = 0
             st.rerun()
