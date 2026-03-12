@@ -20,7 +20,6 @@ if not os.path.exists(IMG_FOLDER):
 
 SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith"]
 
-# Fragenpool für das Allgemeinwissen-Spiel
 QUIZ_QUESTIONS = [
     {"q": "Was ist die Hauptstadt von Frankreich?", "a": ["Berlin", "Madrid", "Paris", "Rom"], "correct": "Paris"},
     {"q": "Wie viele Planeten hat unser Sonnensystem?", "a": ["7", "8", "9", "10"], "correct": "8"},
@@ -65,7 +64,7 @@ labels = load_labels("labels.txt")
 
 st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["Erfassen", "Datenbank", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
+    ["Erfassen", "Datenbank", "📋 Kategorien-Tabelle", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "Erfassen":
@@ -103,7 +102,7 @@ if auswahl == "Erfassen":
 
 # --- MODUS: DATENBANK ---
 elif auswahl == "Datenbank":
-    st.header("📊 Archivierte Fundstücke")
+    st.header("📊 Alle Fundstücke (Liste)")
     df = get_database()
     if not df.empty:
         for _, row in df.iterrows():
@@ -111,34 +110,46 @@ elif auswahl == "Datenbank":
             with c1:
                 path = str(row['Bild_Pfad'])
                 if os.path.exists(path): st.image(path, width=120)
-                else: st.write("🖼️ (Kein Bild)")
+                else: st.write("🖼️")
             with c2: st.write(f"**{row['Kategorie']}**\n\n_{row['Status']}_")
             with c3: st.write(f"📅 Fund: {row['Funddatum']}\n\n⏰ Ablauf: {row['Ablaufdatum']}")
             with c4: 
                 if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
-                    delete_entry(row['ID'])
-                    st.rerun()
+                    delete_entry(row['ID']); st.rerun()
             st.divider()
     else:
-        st.info("Die Datenbank ist aktuell leer.")
+        st.info("Leer.")
+
+# --- NEU: MODUS: KATEGORIEN-TABELLE ---
+elif auswahl == "📋 Kategorien-Tabelle":
+    st.header("📋 Sortiert nach Kategorien")
+    df = get_database()
+    
+    if not df.empty:
+        kategorien = df['Kategorie'].unique()
+        for kat in kategorien:
+            with st.expander(f"📁 {kat} ({len(df[df['Kategorie']==kat])} Items)", expanded=True):
+                kat_df = df[df['Kategorie'] == kat][["ID", "Funddatum", "Ablaufdatum", "Status"]]
+                st.table(kat_df)
+    else:
+        st.info("Keine Daten für eine Tabellen-Ansicht vorhanden.")
 
 # --- MODUS: SUCHE ---
 elif auswahl == "Suche":
     st.header("🔍 Schnellsuche")
-    query = st.text_input("Suchbegriff eingeben...")
+    query = st.text_input("Suchbegriff...")
     df = get_database()
     if query and not df.empty:
         res = df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)]
         st.dataframe(res, use_container_width=True)
 
-# --- MODUS: SPACE TYPING ---
+# --- SPIELE SEKTION (Space Typing, Reaktion, Aim, Quiz bleiben gleich) ---
 elif auswahl == "🎮 Space Typing":
     st.header("☄️ Space Typer")
     if 'input_key' not in st.session_state: st.session_state.input_key = 0
     if 'game_active' not in st.session_state: st.session_state.game_active = False
-    
     if not st.session_state.game_active:
-        if st.button("Spiel Starten"):
+        if st.button("Start"):
             st.session_state.game_active, st.session_state.lives, st.session_state.score, st.session_state.current_word, st.session_state.start_time = True, 3, 0, random.choice(SPACE_WORDS), time.time()
             st.rerun()
     else:
@@ -148,98 +159,46 @@ elif auswahl == "🎮 Space Typing":
         fid = f"typer_{st.session_state.input_key}"
         ui = st.text_input("Tippen:", key=fid).strip()
         components.html(f"<script>window.parent.document.querySelector('input[id*=\"{fid}\"]').focus();</script>", height=0)
-        
         if ui.lower() == st.session_state.current_word.lower():
-            st.session_state.score += 10
-            st.session_state.current_word = random.choice(SPACE_WORDS)
-            st.session_state.start_time = time.time()
-            st.session_state.input_key += 1
-            st.rerun()
+            st.session_state.score += 10; st.session_state.current_word = random.choice(SPACE_WORDS); st.session_state.start_time = time.time(); st.session_state.input_key += 1; st.rerun()
         if rest <= 0:
-            st.session_state.lives -= 1
-            st.session_state.start_time = time.time()
-            st.session_state.input_key += 1
+            st.session_state.lives -= 1; st.session_state.start_time = time.time(); st.session_state.input_key += 1
             if st.session_state.lives <= 0: st.session_state.game_active = False
             st.rerun()
         time.sleep(0.1); st.rerun()
 
-# --- MODUS: REAKTIONSTEST ---
 elif auswahl == "⚡ Reaktionstest":
     st.header("⚡ Reaktionstest")
     if 'rxn_state' not in st.session_state: st.session_state.rxn_state = "idle"
     if st.session_state.rxn_state == "idle":
-        if st.button("Start"):
-            st.session_state.rxn_state = "waiting"
-            st.session_state.wait_until = time.time() + random.uniform(2, 5)
-            st.rerun()
+        if st.button("Start"): st.session_state.rxn_state = "waiting"; st.session_state.wait_until = time.time() + random.uniform(2, 5); st.rerun()
     elif st.session_state.rxn_state == "waiting":
-        st.error("### WARTEN...")
-        if time.time() >= st.session_state.wait_until:
-            st.session_state.rxn_state = "go"
-            st.session_state.go_start = time.time()
-            st.rerun()
-        time.sleep(0.05); st.rerun()
+        st.error("### WARTEN..."); (time.sleep(0.05) or st.rerun()) if time.time() < st.session_state.wait_until else (setattr(st.session_state, 'rxn_state', 'go') or setattr(st.session_state, 'go_start', time.time()) or st.rerun())
     elif st.session_state.rxn_state == "go":
-        st.success("### JETZT KLICKEN!!!")
-        if st.button("BÄM!"):
-            diff = (time.time() - st.session_state.go_start) * 1000
-            st.session_state.last_res = diff
-            st.session_state.rxn_state = "result"
-            st.rerun()
+        if st.button("KLICK!"): st.session_state.last_res = (time.time() - st.session_state.go_start)*1000; st.session_state.rxn_state = "result"; st.rerun()
     elif st.session_state.rxn_state == "result":
-        st.write(f"## {st.session_state.last_res:.0f} ms")
-        if st.button("Nochmal"):
-            st.session_state.rxn_state = "idle"
-            st.rerun()
+        st.write(f"## {st.session_state.last_res:.0f} ms"); (st.button("Nochmal") and setattr(st.session_state, 'rxn_state', 'idle') or st.rerun())
 
-# --- MODUS: AIM-TRAINER ---
 elif auswahl == "🎯 Aim-Trainer":
     st.header("🎯 Aim-Trainer")
     if 'aim_hits' not in st.session_state: st.session_state.aim_hits = 0
     if st.session_state.aim_hits == 0:
-        if st.button("Start"):
-            st.session_state.aim_hits = 1
-            st.session_state.aim_start = time.time()
-            st.rerun()
+        if st.button("Start"): st.session_state.aim_hits = 1; st.session_state.aim_start = time.time(); st.rerun()
     elif st.session_state.aim_hits <= 10:
-        st.write(f"Ziel {st.session_state.aim_hits}/10")
-        c = st.columns(10)
-        with c[random.randint(0, 9)]:
-            if st.button("🎯", key=f"aim_{st.session_state.aim_hits}"):
-                st.session_state.aim_hits += 1
-                st.rerun()
+        c = st.columns(10); (c[random.randint(0, 9)].button("🎯", key=f"aim_{st.session_state.aim_hits}") and setattr(st.session_state, 'aim_hits', st.session_state.aim_hits + 1) or st.rerun())
     else:
-        st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s")
-        if st.button("Reset"):
-            st.session_state.aim_hits = 0
-            st.rerun()
+        st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s"); (st.button("Reset") and setattr(st.session_state, 'aim_hits', 0) or st.rerun())
 
-# --- MODUS: ALLGEMEINWISSEN ---
 elif auswahl == "🧠 Allgemeinwissen":
-    st.header("🧠 Quiz: Teste dein Wissen!")
-    
-    if 'quiz_index' not in st.session_state:
-        st.session_state.quiz_index = random.randint(0, len(QUIZ_QUESTIONS)-1)
-        st.session_state.quiz_score = 0
-        st.session_state.quiz_answered = False
-
-    frage_daten = QUIZ_QUESTIONS[st.session_state.quiz_index]
-    st.subheader(frage_daten["q"])
-    
-    for antwort in frage_daten["a"]:
-        if st.button(antwort, key=f"btn_{antwort}"):
+    st.header("🧠 Quiz")
+    if 'quiz_index' not in st.session_state: st.session_state.quiz_index, st.session_state.quiz_score, st.session_state.quiz_answered = random.randint(0, len(QUIZ_QUESTIONS)-1), 0, False
+    frage = QUIZ_QUESTIONS[st.session_state.quiz_index]
+    st.subheader(frage["q"])
+    for a in frage["a"]:
+        if st.button(a, key=f"q_{a}"):
             if not st.session_state.quiz_answered:
-                if antwort == frage_daten["correct"]:
-                    st.session_state.quiz_score += 1
-                    st.success("Richtig!")
-                else:
-                    st.error(f"Falsch! Die richtige Antwort war: {frage_daten['correct']}")
-                st.session_state.quiz_answered = True
-                st.rerun()
-
+                if a == frage["correct"]: st.session_state.quiz_score += 1; st.success("Richtig!")
+                else: st.error(f"Falsch! {frage['correct']}")
+                st.session_state.quiz_answered = True; st.rerun()
     if st.session_state.quiz_answered:
-        st.write(f"Aktueller Punktestand: {st.session_state.quiz_score}")
-        if st.button("Nächste Frage"):
-            st.session_state.quiz_index = random.randint(0, len(QUIZ_QUESTIONS)-1)
-            st.session_state.quiz_answered = False
-            st.rerun()
+        st.write(f"Score: {st.session_state.quiz_score}"); (st.button("Nächste") and (setattr(st.session_state, 'quiz_index', random.randint(0, len(QUIZ_QUESTIONS)-1)) or setattr(st.session_state, 'quiz_answered', False)) or st.rerun())
