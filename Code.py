@@ -64,7 +64,7 @@ labels = load_labels("labels.txt")
 
 st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["Erfassen", "Datenbank", "📋 Kategorien-Tabelle", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
+    ["Erfassen", "Datenbank", "📋 Kategorien-Galerie", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "Erfassen":
@@ -102,7 +102,7 @@ if auswahl == "Erfassen":
 
 # --- MODUS: DATENBANK ---
 elif auswahl == "Datenbank":
-    st.header("📊 Alle Fundstücke (Liste)")
+    st.header("📊 Alle Fundstücke (Zeitstrahl)")
     df = get_database()
     if not df.empty:
         for _, row in df.iterrows():
@@ -117,22 +117,34 @@ elif auswahl == "Datenbank":
                 if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
                     delete_entry(row['ID']); st.rerun()
             st.divider()
-    else:
-        st.info("Leer.")
 
-# --- NEU: MODUS: KATEGORIEN-TABELLE ---
-elif auswahl == "📋 Kategorien-Tabelle":
-    st.header("📋 Sortiert nach Kategorien")
+# --- NEU: MODUS: KATEGORIEN-GALERIE (MIT BILDERN) ---
+elif auswahl == "📋 Kategorien-Galerie":
+    st.header("📋 Inventar nach Kategorien")
     df = get_database()
     
     if not df.empty:
-        kategorien = df['Kategorie'].unique()
+        kategorien = sorted(df['Kategorie'].unique())
         for kat in kategorien:
-            with st.expander(f"📁 {kat} ({len(df[df['Kategorie']==kat])} Items)", expanded=True):
-                kat_df = df[df['Kategorie'] == kat][["ID", "Funddatum", "Ablaufdatum", "Status"]]
-                st.table(kat_df)
+            with st.expander(f"📁 {kat.upper()} ({len(df[df['Kategorie']==kat])} Items)", expanded=True):
+                kat_items = df[df['Kategorie'] == kat]
+                
+                # Wir erstellen ein Grid mit 4 Spalten für die Bilder
+                cols = st.columns(4)
+                for i, (_, item) in enumerate(kat_items.iterrows()):
+                    with cols[i % 4]:
+                        path = str(item['Bild_Pfad'])
+                        if os.path.exists(path):
+                            st.image(path, use_container_width=True)
+                        else:
+                            st.write("🖼️ Bild fehlt")
+                        st.caption(f"📅 {item['Funddatum']}")
+                        st.write(f"**{item['Status']}**")
+                        if st.button("✅ Weg", key=f"kat_del_{item['ID']}"):
+                            delete_entry(item['ID'])
+                            st.rerun()
     else:
-        st.info("Keine Daten für eine Tabellen-Ansicht vorhanden.")
+        st.info("Keine Daten vorhanden.")
 
 # --- MODUS: SUCHE ---
 elif auswahl == "Suche":
@@ -143,7 +155,7 @@ elif auswahl == "Suche":
         res = df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)]
         st.dataframe(res, use_container_width=True)
 
-# --- SPIELE SEKTION (Space Typing, Reaktion, Aim, Quiz bleiben gleich) ---
+# --- SPIELE SEKTION ---
 elif auswahl == "🎮 Space Typing":
     st.header("☄️ Space Typer")
     if 'input_key' not in st.session_state: st.session_state.input_key = 0
