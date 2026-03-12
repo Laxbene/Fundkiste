@@ -64,10 +64,10 @@ labels = load_labels("labels.txt")
 
 st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["Erfassen", "Datenbank", "📋 Kategorien-Galerie", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
+    ["Erfassen", "Datenbank", "📋 Kategorien-Galerie", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
 
 # --- MODUS: ERFASSEN ---
-if auswahl == "📸 Erfassen":
+if auswahl == "Erfassen":
     st.header("📸 Neues Fundstück erfassen")
     uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
     if uploaded_file and model:
@@ -101,7 +101,7 @@ if auswahl == "📸 Erfassen":
                 st.success("In Datenbank archiviert!")
 
 # --- MODUS: DATENBANK ---
-elif auswahl == "📊 Datenbank":
+elif auswahl == "Datenbank":
     st.header("📊 Alle Fundstücke (Zeitstrahl)")
     df = get_database()
     if not df.empty:
@@ -145,6 +145,15 @@ elif auswahl == "📋 Kategorien-Galerie":
                             st.rerun()
     else:
         st.info("Keine Daten vorhanden.")
+
+# --- MODUS: SUCHE ---
+elif auswahl == "Suche":
+    st.header("🔍 Schnellsuche")
+    query = st.text_input("Suchbegriff...")
+    df = get_database()
+    if query and not df.empty:
+        res = df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)]
+        st.dataframe(res, use_container_width=True)
 
 # --- SPIELE SEKTION ---
 elif auswahl == "🎮 Space Typing":
