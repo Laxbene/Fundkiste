@@ -126,7 +126,51 @@ elif auswahl == "Datenbank":
                     delete_entry(row['id'], row['bild_url'])
                     st.rerun()
             st.divider()
+# Stelle sicher, dass BUCKET_NAME oben im Code auf "fundkiste" steht!
+if st.form_submit_button("In Cloud speichern"):
+    try:
+        # 1. Eindeutiger Dateiname
+        file_ext = uploaded_file.name.split(".")[-1]
+        file_name = f"{int(time.time())}.{file_ext}"
+        img_bytes = uploaded_file.getvalue()
+        
+        # 2. Upload mit explizitem Content-Type
+        # Das verhindert Fehler in der storage3 Library
+        supabase.storage.from_("fundkiste").upload(
+            path=file_name,
+            file=img_bytes,
+            file_options={"content-type": f"image/{file_ext}"}
+        )
+        
+        # 3. URL generieren
+        img_url = supabase.storage.from_("fundkiste").get_public_url(file_name)
+        
+        # 4. Datenbank-Eintrag
+        data = {
+            "kategorie": final_klasse,
+            "funddatum": str(HEUTE),
+            "ablaufdatum": str(HEUTE + timedelta(days=30)),
+            "status": beschreibung,storage3.exceptions.StorageApiError: This app has encountered an error. The original error message is redacted to prevent data leaks. Full error details have been recorded in the logs (if you're on Streamlit Cloud, click on 'Manage app' in the lower right of your app).
+Traceback:
 
+File "/mount/src/fundkiste/Code.py", line 100, in <module>
+    supabase.storage.from_(BUCKET_NAME).upload(file_name, img_bytes)
+File "/home/adminuser/venv/lib/python3.10/site-packages/storage3/_sync/file_api.py", line 592, in upload
+    return self._upload_or_update("POST", path_parts, file, file_options)
+File "/home/adminuser/venv/lib/python3.10/site-packages/storage3/_sync/file_api.py", line 564, in _upload_or_update
+    response = self._request(
+File "/home/adminuser/venv/lib/python3.10/site-packages/storage3/_sync/file_api.py", line 84, in _request
+    raise StorageApiError(
+            "bild_url": img_url
+        }
+        supabase.table("fundstuecke").insert(data).execute()
+        
+        st.success("✅ Erfolgreich in der Cloud gespeichert!")
+        time.sleep(1)
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"❌ Fehler: {e}")
 # --- MODUS: GALERIE ---
 elif auswahl == "📋 Kategorien-Galerie":
     st.header("📋 Cloud Inventar")
