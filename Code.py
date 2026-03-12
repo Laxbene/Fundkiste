@@ -20,6 +20,15 @@ if not os.path.exists(IMG_FOLDER):
 
 SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith"]
 
+# Fragenpool für das Allgemeinwissen-Spiel
+QUIZ_QUESTIONS = [
+    {"q": "Was ist die Hauptstadt von Frankreich?", "a": ["Berlin", "Madrid", "Paris", "Rom"], "correct": "Paris"},
+    {"q": "Wie viele Planeten hat unser Sonnensystem?", "a": ["7", "8", "9", "10"], "correct": "8"},
+    {"q": "Wer malte die Mona Lisa?", "a": ["Picasso", "Van Gogh", "Da Vinci", "Monet"], "correct": "Da Vinci"},
+    {"q": "Welches Element hat das Symbol 'O'?", "a": ["Gold", "Sauerstoff", "Eisen", "Kohlenstoff"], "correct": "Sauerstoff"},
+    {"q": "Was ist das größte Säugetier der Welt?", "a": ["Elefant", "Blauwal", "Giraffe", "Nashorn"], "correct": "Blauwal"}
+]
+
 # --- FUNKTIONEN ---
 @st.cache_resource
 def load_my_model():
@@ -37,8 +46,7 @@ def load_labels(label_path):
 
 def get_database():
     if os.path.exists(DB_FILE): 
-        df = pd.read_csv(DB_FILE)
-        return df
+        return pd.read_csv(DB_FILE)
     return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
 
 def delete_entry(entry_id):
@@ -57,7 +65,7 @@ labels = load_labels("labels.txt")
 
 st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["Erfassen", "Datenbank", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer"])
+    ["Erfassen", "Datenbank", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "Erfassen":
@@ -93,7 +101,7 @@ if auswahl == "Erfassen":
                 pd.concat([df, pd.DataFrame([neu])], ignore_index=True).to_csv(DB_FILE, index=False)
                 st.success("In Datenbank archiviert!")
 
-# --- MODUS: DATENBANK (FEHLER KORRIGIERT) ---
+# --- MODUS: DATENBANK ---
 elif auswahl == "Datenbank":
     st.header("📊 Archivierte Fundstücke")
     df = get_database()
@@ -101,18 +109,11 @@ elif auswahl == "Datenbank":
         for _, row in df.iterrows():
             c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
             with c1:
-                # Hier wurde die Logik korrigiert: Kein Einzeiler mehr!
                 path = str(row['Bild_Pfad'])
-                if os.path.exists(path):
-                    st.image(path, width=120)
-                else:
-                    st.write("🖼️ (Kein Bild)")
-            with c2:
-                st.write(f"**{row['Kategorie']}**")
-                st.write(f"_{row['Status']}_")
-            with c3:
-                st.write(f"📅 Fund: {row['Funddatum']}")
-                st.write(f"⏰ Ablauf: {row['Ablaufdatum']}")
+                if os.path.exists(path): st.image(path, width=120)
+                else: st.write("🖼️ (Kein Bild)")
+            with c2: st.write(f"**{row['Kategorie']}**\n\n_{row['Status']}_")
+            with c3: st.write(f"📅 Fund: {row['Funddatum']}\n\n⏰ Ablauf: {row['Ablaufdatum']}")
             with c4: 
                 if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
                     delete_entry(row['ID'])
@@ -211,4 +212,34 @@ elif auswahl == "🎯 Aim-Trainer":
         st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s")
         if st.button("Reset"):
             st.session_state.aim_hits = 0
+            st.rerun()
+
+# --- MODUS: ALLGEMEINWISSEN ---
+elif auswahl == "🧠 Allgemeinwissen":
+    st.header("🧠 Quiz: Teste dein Wissen!")
+    
+    if 'quiz_index' not in st.session_state:
+        st.session_state.quiz_index = random.randint(0, len(QUIZ_QUESTIONS)-1)
+        st.session_state.quiz_score = 0
+        st.session_state.quiz_answered = False
+
+    frage_daten = QUIZ_QUESTIONS[st.session_state.quiz_index]
+    st.subheader(frage_daten["q"])
+    
+    for antwort in frage_daten["a"]:
+        if st.button(antwort, key=f"btn_{antwort}"):
+            if not st.session_state.quiz_answered:
+                if antwort == frage_daten["correct"]:
+                    st.session_state.quiz_score += 1
+                    st.success("Richtig!")
+                else:
+                    st.error(f"Falsch! Die richtige Antwort war: {frage_daten['correct']}")
+                st.session_state.quiz_answered = True
+                st.rerun()
+
+    if st.session_state.quiz_answered:
+        st.write(f"Aktueller Punktestand: {st.session_state.quiz_score}")
+        if st.button("Nächste Frage"):
+            st.session_state.quiz_index = random.randint(0, len(QUIZ_QUESTIONS)-1)
+            st.session_state.quiz_answered = False
             st.rerun()
