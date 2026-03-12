@@ -64,7 +64,7 @@ labels = load_labels("labels.txt")
 
 st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["Erfassen", "Datenbank", "📋 Kategorien-Galerie", "Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
+    ["Erfassen", "Datenbank", "📋 Kategorien-Galerie", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "📸 Erfassen":
