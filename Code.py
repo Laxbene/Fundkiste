@@ -316,7 +316,7 @@ elif auswahl == "🚀 Doodle Jump":
                 ctx.fillRect(p.x, p.y, p.w, p.h);
             });
 
-            ctx.fillStyle = 'white'; ctx.font = 'bold 20px Courier';
+            ctx.fillStyle = '#03396c'; ctx.font = 'bold 20px Courier';
             ctx.fillText("SCORE: " + score, 20, 40);
         }
 
