@@ -1,3 +1,4 @@
+
 import streamlit as st
 import streamlit.components.v1 as components
 import tensorflow as tf
@@ -28,7 +29,33 @@ QUIZ_QUESTIONS = [
     {"q": "Was ist das größte Säugetier der Welt?", "a": ["Elefant", "Blauwal", "Giraffe", "Nashorn"], "correct": "Blauwal"}
 ]
 
-# --- FUNKTIONEN ---
+# --- VERBESSERTE DATENBANK-FUNKTIONEN ---
+def get_database():
+    if os.path.exists(DB_FILE):
+        try:
+            return pd.read_csv(DB_FILE)
+        except Exception as e:
+            st.error(f"Fehler beim Laden der DB: {e}")
+            # Backup bei Korruption
+            return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
+    return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
+
+def save_database(df):
+    try:
+        df.to_csv(DB_FILE, index=False)
+    except Exception as e:
+        st.error(f"Speichern fehlgeschlagen: {e}")
+
+def delete_entry(entry_id):
+    df = get_database()
+    img_to_delete = df.loc[df['ID'] == entry_id, 'Bild_Pfad'].values
+    if len(img_to_delete) > 0 and os.path.exists(str(img_to_delete[0])):
+        try: os.remove(str(img_to_delete[0]))
+        except: pass
+    df = df[df['ID'] != entry_id]
+    save_database(df)
+
+# --- KI MODELL LADEN ---
 @st.cache_resource
 def load_my_model():
     try: return tf.keras.models.load_model('keras_model.h5', compile=False)
@@ -43,20 +70,6 @@ def load_labels(label_path):
             if len(p) == 2: d[int(p[0])] = p[1]
     return d
 
-def get_database():
-    if os.path.exists(DB_FILE): 
-        return pd.read_csv(DB_FILE)
-    return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
-
-def delete_entry(entry_id):
-    df = get_database()
-    img_to_delete = df.loc[df['ID'] == entry_id, 'Bild_Pfad'].values
-    if len(img_to_delete) > 0 and os.path.exists(str(img_to_delete[0])):
-        try: os.remove(str(img_to_delete[0]))
-        except: pass
-    df = df[df['ID'] != entry_id]
-    df.to_csv(DB_FILE, index=False)
-
 # --- UI SETUP ---
 st.set_page_config(page_title="Fundkiste Pro 2026", layout="wide")
 model = load_my_model()
@@ -64,7 +77,7 @@ labels = load_labels("labels.txt")
 
 st.sidebar.title("🏢 Zentrale")
 auswahl = st.sidebar.selectbox("Navigation", 
-    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen"])
+    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen", "🚀 Doodle Jump"])
 
 # --- MODUS: ERFASSEN ---
 if auswahl == "📸 Erfassen":
@@ -91,18 +104,18 @@ if auswahl == "📸 Erfassen":
             if "Nicht erkannt" not in k_liste: k_liste.append("Nicht erkannt")
             final_klasse = st.selectbox("Kategorie", k_liste, index=k_liste.index(klasse))
             beschreibung = st.text_input("Zusatz-Info (Farbe, Marke...)")
-            submit = st.form_submit_button("Speichern", disabled=not can_save)
+            submit = st.form_submit_button("Speichern")
             if submit:
                 img_path = os.path.join(IMG_FOLDER, f"{int(time.time())}.jpg")
                 image.save(img_path)
                 df = get_database()
                 neu = {"ID": int(time.time()), "Kategorie": final_klasse, "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), "Status": beschreibung, "Bild_Pfad": img_path}
-                pd.concat([df, pd.DataFrame([neu])], ignore_index=True).to_csv(DB_FILE, index=False)
+                save_database(pd.concat([df, pd.DataFrame([neu])], ignore_index=True))
                 st.success("In Datenbank archiviert!")
 
 # --- MODUS: DATENBANK ---
-elif auswahl == "Datenbank":
-    st.header("📊 Alle Fundstücke (Zeitstrahl)")
+elif auswahl == "📊 Datenbank":
+    st.header("📊 Alle Fundstücke")
     df = get_database()
     if not df.empty:
         for _, row in df.iterrows():
@@ -200,7 +213,73 @@ elif auswahl == "🎯 Aim-Trainer":
         c = st.columns(10); (c[random.randint(0, 9)].button("🎯", key=f"aim_{st.session_state.aim_hits}") and setattr(st.session_state, 'aim_hits', st.session_state.aim_hits + 1) or st.rerun())
     else:
         st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s"); (st.button("Reset") and setattr(st.session_state, 'aim_hits', 0) or st.rerun())
+# --- MODUS: DOODLE JUMP ---
+elif auswahl == "🚀 Doodle Jump":
+    st.header("🚀 Space Jumper")
+    st.info("Steuerung: Benutze die **Pfeiltasten (Links/Rechts)** zum Bewegen!")
+    
+    doodle_jump_html = """
+    <canvas id="gameCanvas" width="400" height="600" style="border:2px solid #333; display: block; margin: 0 auto; background: #0e1117;"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let score = 0;
+        let platforms = [];
+        let player = { x: 200, y: 500, width: 40, height: 40, vy: 0, vx: 0 };
+        let gravity = 0.2, jumpStrength = -8;
 
+        function init() {
+            platforms = [];
+            for(let i=0; i<7; i++) platforms.push({x: Math.random()*350, y: i*100, w: 60, h: 10});
+            player.y = 500; player.vy = 0; score = 0;
+        }
+
+        function update() {
+            player.vy += gravity;
+            player.y += player.vy;
+            player.x += player.vx;
+
+            if(player.x < 0) player.x = canvas.width;
+            if(player.x > canvas.width) player.x = 0;
+
+            if(player.y < canvas.height/2 && player.vy < 0) {
+                platforms.forEach(p => { p.y -= player.vy; if(p.y > canvas.height) { p.y = 0; p.x = Math.random()*350; score++; }});
+                player.y = canvas.height/2;
+            }
+
+            platforms.forEach(p => {
+                if(player.vy > 0 && player.x + 30 > p.x && player.x < p.x + p.w && player.y + 40 > p.y && player.y + 40 < p.y + 15) {
+                    player.vy = jumpStrength;
+                }
+            });
+
+            if(player.y > canvas.height) init();
+        }
+
+        function draw() {
+            ctx.clearRect(0,0,400,600);
+            ctx.fillStyle = '#00ffcc';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.fillStyle = '#ffffff';
+            platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+            ctx.fillStyle = 'white'; ctx.font = '20px Arial';
+            ctx.fillText("Score: " + score, 10, 30);
+        }
+
+        document.addEventListener('keydown', e => {
+            if(e.key == 'ArrowLeft') player.vx = -4;
+            if(e.key == 'ArrowRight') player.vx = 4;
+        });
+        document.addEventListener('keyup', e => { if(e.key == 'ArrowLeft' || e.key == 'ArrowRight') player.vx = 0; });
+
+        init();
+        function loop() { update(); draw(); requestAnimationFrame(loop); }
+        loop();
+    </script>
+    """
+    components.html(doodle_jump_html, height=650)
+
+# (Restliche Modi wie Suche, Quiz etc. bleiben wie gehabt)
 elif auswahl == "🧠 Allgemeinwissen":
     st.header("🧠 Quiz")
     if 'quiz_index' not in st.session_state: st.session_state.quiz_index, st.session_state.quiz_score, st.session_state.quiz_answered = random.randint(0, len(QUIZ_QUESTIONS)-1), 0, False
