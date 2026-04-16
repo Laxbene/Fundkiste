@@ -214,70 +214,118 @@ elif auswahl == "🎯 Aim-Trainer":
     else:
         st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s"); (st.button("Reset") and setattr(st.session_state, 'aim_hits', 0) or st.rerun())
         
-# --- MODUS: DOODLE JUMP (SAFE START & NEW BLOCKS) ---
+# --- MODUS: DOODLE JUMP (FAIR-PLAY UPDATE) ---
 elif auswahl == "🚀 Doodle Jump":
-    st.header("🚀 Space Jumper")
-    st.info("Steuerung: Pfeiltasten LINKS/RECHTS. Starte auf dem sicheren Boden!")
+    st.header("🚀 Space Jumper - Pro Edition")
+    st.info("Steuerung: Pfeiltasten LINKS/RECHTS. Jede Lücke ist springbar!")
     
     doodle_html = """
-    <canvas id="j" width="400" height="600" style="border:3px solid #444; display:block; margin:auto; background:#f5fcf9;"></canvas>
+    <canvas id="gameCanvas" width="400" height="600" style="border:3px solid #444; display:block; margin:auto; background:#fcf5f9;"></canvas>
     <script>
-        const c = document.getElementById('j'), ctx = c.getContext('2d');
-        let p = { x: 180, y: 450, w: 35, h: 45, vy: 0, vx: 0 }, platforms = [], score = 0, keys = {};
+        const canvas = document.getElementById('gameCanvas'), ctx = canvas.getContext('2d');
+        let player = { x: 180, y: 450, w: 35, h: 45, vy: 0, vx: 0 };
+        let platforms = [], score = 0, keys = {};
+        const gravity = 0.25, jumpPower = -9.5; // Leicht erhöhte Sprungkraft für Sicherheit
 
-        function createP(y, isBase=false) {
-            let t = 'n'; 
+        function createPlatform(y, isBase=false) {
+            let type = 'normal';
             if(!isBase) {
                 let r = Math.random();
-                if(r > 0.88) t = 'boost'; else if(r > 0.75) t = 'break';
-            } else t = 'base';
-            return { x: isBase ? 100 : Math.random()*340, y: y, w: isBase ? 200 : 60, h: 12, type: t };
+                if(r > 0.90) type = 'boost'; 
+                else if(r > 0.75) type = 'broken';
+            } else type = 'base';
+            
+            // x-Position so wählen, dass sie nicht zu weit am Rand klebt
+            let x = isBase ? 100 : Math.random() * 320; 
+            return { x: x, y: y, w: isBase ? 200 : 70, h: 12, type: type };
         }
 
         function init() {
-            score = 0; p.x = 180; p.y = 450; p.vy = 0; platforms = [];
-            platforms.push(createP(550, true)); // Sicherer Boden
-            for(let i=0; i<7; i++) platforms.push(createP(i * 80));
+            score = 0; player.x = 180; player.y = 450; player.vy = 0;
+            platforms = [];
+            // Bodenplatte
+            platforms.push(createPlatform(550, true));
+            // Plattformen mit festem Maximalabstand (max 85 Pixel vertikal)
+            // Das garantiert, dass man mit jumpPower (-9.5) immer hochkommt
+            for(let i=0; i<7; i++) {
+                platforms.push(createPlatform(550 - (i + 1) * 85));
+            }
         }
 
         function update() {
-            p.vy += 0.25; p.y += p.vy;
-            if(keys['ArrowLeft']) p.x -= 5; if(keys['ArrowRight']) p.x += 5;
-            if(p.x < -30) p.x = 400; if(p.x > 400) p.x = -30;
+            player.vy += gravity;
+            player.y += player.vy;
+            
+            if(keys['ArrowLeft']) player.vx = -5;
+            else if(keys['ArrowRight']) player.vx = 5;
+            else player.vx *= 0.8; // Sanftes Abbremsen
+            
+            player.x += player.vx;
 
-            if(p.y < 300) {
-                let d = 300 - p.y; p.y = 300;
-                platforms.forEach(pl => { pl.y += d; if(pl.y > 600) { Object.assign(pl, createP(0)); score++; }});
-            }
+            // Wrap-around
+            if(player.x < -30) player.x = canvas.width;
+            if(player.x > canvas.width) player.x = -30;
 
-            if(p.vy > 0) {
-                platforms.forEach(pl => {
-                    if(p.x+p.w > pl.x && p.x < pl.x+pl.w && p.y+p.h > pl.y && p.y+p.h < pl.y+15) {
-                        if(pl.type === 'boost') p.vy = -16;
-                        else if(pl.type === 'break') { p.vy = -9; pl.y = 999; }
-                        else p.vy = -9;
+            // Kamera-Follow
+            if(player.y < 250) {
+                let delta = 250 - player.y;
+                player.y = 250;
+                platforms.forEach(p => {
+                    p.y += delta;
+                    if(p.y > 600) {
+                        score++;
+                        // Neue Plattform immer oben im Bereich 0-20px generieren
+                        Object.assign(p, createPlatform(p.y - 600));
                     }
                 });
             }
-            if(p.y > 600) init();
+
+            // Kollision (nur beim Runterfallen)
+            if(player.vy > 0) {
+                platforms.forEach(p => {
+                    if(player.x + player.w > p.x && player.x < p.x + p.w &&
+                       player.y + player.h > p.y && player.y + player.h < p.y + 15) {
+                        
+                        if(p.type === 'boost') {
+                            player.vy = jumpPower * 1.8;
+                        } else if(p.type === 'broken') {
+                            player.vy = jumpPower;
+                            p.y = 1000; // Block "zerstört"
+                        } else {
+                            player.vy = jumpPower;
+                        }
+                    }
+                });
+            }
+
+            if(player.y > 600) init(); // Game Over
         }
 
         function draw() {
-            ctx.clearRect(0,0,400,600);
-            ctx.fillStyle = '#ff4b4b'; ctx.fillRect(p.x, p.y, p.w, p.h); // Astronaut
-            ctx.fillStyle = '#88ccff'; ctx.fillRect(p.x+5, p.y+8, p.w-10, 15); // Visier
-            platforms.forEach(pl => {
-                ctx.fillStyle = pl.type==='boost'?'#f1c40f':pl.type==='break'?'#eee':'#2ecc71';
-                ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            
+            // Astronaut zeichnen
+            ctx.fillStyle = '#ff4b4b'; ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.fillStyle = '#88ccff'; ctx.fillRect(player.x+5, player.y+8, player.w-10, 15);
+
+            // Blöcke zeichnen
+            platforms.forEach(p => {
+                if(p.type==='boost') ctx.fillStyle='#f1c40f';
+                else if(p.type==='broken') ctx.fillStyle='#ffffff';
+                else ctx.fillStyle='#2ecc71';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
             });
-            ctx.fillStyle = 'white'; ctx.font = '20px Arial'; ctx.fillText("Score: " + score, 20, 40);
+
+            ctx.fillStyle = 'white'; ctx.font = 'bold 20px Courier';
+            ctx.fillText("SCORE: " + score, 20, 40);
         }
 
-        window.onkeydown = e => { keys[e.key] = true; if(e.key.includes('Arrow')) e.preventDefault(); };
+        window.onkeydown = e => { keys[e.key] = true; if(e.key.includes("Arrow")) e.preventDefault(); };
         window.onkeyup = e => keys[e.key] = false;
-        init(); setInterval(() => { update(); draw(); }, 1000/60);
+
+        init();
+        function main() { update(); draw(); requestAnimationFrame(main); }
+        main();
     </script>
     """
     components.html(doodle_html, height=650)
-
-# (Andere Modi wie Space Typing etc. hier einfügen...)
