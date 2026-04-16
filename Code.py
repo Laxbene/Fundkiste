@@ -258,9 +258,9 @@ elif auswahl == "🚀 Doodle Jump":
 
         function draw() {
             ctx.clearRect(0,0,400,600);
-            ctx.fillStyle = '#00ffcc';
+            ctx.fillStyle = '#ff8cab';
             ctx.fillRect(player.x, player.y, player.width, player.height);
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '#95f8f0';
             platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
             ctx.fillStyle = 'white'; ctx.font = '20px Arial';
             ctx.fillText("Score: " + score, 10, 30);
