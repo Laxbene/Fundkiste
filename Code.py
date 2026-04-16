@@ -213,133 +213,71 @@ elif auswahl == "🎯 Aim-Trainer":
         c = st.columns(10); (c[random.randint(0, 9)].button("🎯", key=f"aim_{st.session_state.aim_hits}") and setattr(st.session_state, 'aim_hits', st.session_state.aim_hits + 1) or st.rerun())
     else:
         st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s"); (st.button("Reset") and setattr(st.session_state, 'aim_hits', 0) or st.rerun())
-# --- MODUS: DOODLE JUMP (ULTRA UPDATE) ---
+        
+# --- MODUS: DOODLE JUMP (SAFE START & NEW BLOCKS) ---
 elif auswahl == "🚀 Doodle Jump":
-    st.header("🚀 Space Jumper - Special Edition")
-    st.markdown("""
-    **Legende:**
-    * 🟩 **Grün:** Normaler Block
-    * ⬜ **Weiß:** Kaputter Block (verschwindet nach Kontakt!)
-    * 🟨 **Gelb:** Boost-Block (Super-Sprung!)
-    """)
+    st.header("🚀 Space Jumper")
+    st.info("Steuerung: Pfeiltasten LINKS/RECHTS. Starte auf dem sicheren Boden!")
     
     doodle_html = """
-    <canvas id="jumpCanvas" width="400" height="600" style="border:3px solid #444; display:block; margin:auto; background:#050510;"></canvas>
+    <canvas id="j" width="400" height="600" style="border:3px solid #444; display:block; margin:auto; background:#f5fcf9;"></canvas>
     <script>
-        const canvas = document.getElementById('jumpCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        let player = { x: 200, y: 500, w: 35, h: 45, vy: 0, vx: 0 };
-        let platforms = [];
-        let score = 0;
-        let gravity = 0.25;
-        let jump = -9;
-        let keys = {};
+        const c = document.getElementById('j'), ctx = c.getContext('2d');
+        let p = { x: 180, y: 450, w: 35, h: 45, vy: 0, vx: 0 }, platforms = [], score = 0, keys = {};
 
-        function createPlatform(y) {
-            let typeRnd = Math.random();
-            let type = 'normal';
-            if(typeRnd > 0.85) type = 'boost';
-            else if(typeRnd > 0.70) type = 'broken';
-            
-            return { x: Math.random() * 340, y: y, w: 60, h: 12, type: type };
+        function createP(y, isBase=false) {
+            let t = 'n'; 
+            if(!isBase) {
+                let r = Math.random();
+                if(r > 0.88) t = 'boost'; else if(r > 0.75) t = 'break';
+            } else t = 'base';
+            return { x: isBase ? 100 : Math.random()*340, y: y, w: isBase ? 200 : 60, h: 12, type: t };
         }
 
         function init() {
-            score = 0;
-            player.y = 500; player.vy = 0;
-            platforms = [];
-            for(let i=0; i<8; i++) platforms.push(createPlatform(i * 75));
+            score = 0; p.x = 180; p.y = 450; p.vy = 0; platforms = [];
+            platforms.push(createP(550, true)); // Sicherer Boden
+            for(let i=0; i<7; i++) platforms.push(createP(i * 80));
         }
 
         function update() {
-            player.vy += gravity;
-            player.y += player.vy;
-            
-            if(keys['ArrowLeft']) player.x -= 5;
-            if(keys['ArrowRight']) player.x += 5;
-            if(player.x < -30) player.x = canvas.width;
-            if(player.x > canvas.width) player.x = -30;
+            p.vy += 0.25; p.y += p.vy;
+            if(keys['ArrowLeft']) p.x -= 5; if(keys['ArrowRight']) p.x += 5;
+            if(p.x < -30) p.x = 400; if(p.x > 400) p.x = -30;
 
-            // Kamera-Scroll
-            if(player.y < canvas.height / 2) {
-                let diff = canvas.height / 2 - player.y;
-                player.y = canvas.height / 2;
-                platforms.forEach(p => {
-                    p.y += diff;
-                    if(p.y > canvas.height) {
-                        score++;
-                        Object.assign(p, createPlatform(0));
-                        p.x = Math.random() * 340;
+            if(p.y < 300) {
+                let d = 300 - p.y; p.y = 300;
+                platforms.forEach(pl => { pl.y += d; if(pl.y > 600) { Object.assign(pl, createP(0)); score++; }});
+            }
+
+            if(p.vy > 0) {
+                platforms.forEach(pl => {
+                    if(p.x+p.w > pl.x && p.x < pl.x+pl.w && p.y+p.h > pl.y && p.y+p.h < pl.y+15) {
+                        if(pl.type === 'boost') p.vy = -16;
+                        else if(pl.type === 'break') { p.vy = -9; pl.y = 999; }
+                        else p.vy = -9;
                     }
                 });
             }
-
-            // Kollision
-            if(player.vy > 0) {
-                platforms.forEach((p, index) => {
-                    if(player.x + player.w > p.x && player.x < p.x + p.w &&
-                       player.y + player.h > p.y && player.y + player.h < p.y + 15) {
-                        
-                        if(p.type === 'boost') player.vy = jump * 1.8;
-                        else if(p.type === 'broken') {
-                            player.vy = jump;
-                            p.y = 999; // Block weg
-                        } else {
-                            player.vy = jump;
-                        }
-                    }
-                });
-            }
-
-            if(player.y > canvas.height) init();
+            if(p.y > 600) init();
         }
 
         function draw() {
             ctx.clearRect(0,0,400,600);
-            
-            // Spieler (Astronaut)
-            ctx.fillStyle = '#ff4b4b'; // Anzug
-            ctx.fillRect(player.x, player.y, player.w, player.h);
-            ctx.fillStyle = '#88ccff'; // Visier
-            ctx.fillRect(player.x + 5, player.y + 10, player.w - 10, 15);
-
-            // Plattformen
-            platforms.forEach(p => {
-                if(p.type === 'boost') ctx.fillStyle = '#f1c40f';
-                else if(p.type === 'broken') ctx.fillStyle = '#ecf0f1';
-                else ctx.fillStyle = '#2ecc71';
-                ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.fillStyle = '#ff4b4b'; ctx.fillRect(p.x, p.y, p.w, p.h); // Astronaut
+            ctx.fillStyle = '#88ccff'; ctx.fillRect(p.x+5, p.y+8, p.w-10, 15); // Visier
+            platforms.forEach(pl => {
+                ctx.fillStyle = pl.type==='boost'?'#f1c40f':pl.type==='break'?'#eee':'#2ecc71';
+                ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
             });
-
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 20px Arial';
-            ctx.fillText("Score: " + score, 20, 40);
+            ctx.fillStyle = 'white'; ctx.font = '20px Arial'; ctx.fillText("Score: " + score, 20, 40);
         }
 
-        window.addEventListener('keydown', e => keys[e.key] = true);
-        window.addEventListener('keyup', e => keys[e.key] = false);
-
-        init();
-        function loop() { update(); draw(); requestAnimationFrame(loop); }
-        loop();
+        window.onkeydown = e => { keys[e.key] = true; if(e.key.includes('Arrow')) e.preventDefault(); };
+        window.onkeyup = e => keys[e.key] = false;
+        init(); setInterval(() => { update(); draw(); }, 1000/60);
     </script>
     """
     components.html(doodle_html, height=650)
 
-# (Andere Modi bleiben funktional gleich...)
-
-# (Restliche Modi wie Suche, Quiz etc. bleiben wie gehabt)
-elif auswahl == "🧠 Allgemeinwissen":
-    st.header("🧠 Quiz")
-    if 'quiz_index' not in st.session_state: st.session_state.quiz_index, st.session_state.quiz_score, st.session_state.quiz_answered = random.randint(0, len(QUIZ_QUESTIONS)-1), 0, False
-    frage = QUIZ_QUESTIONS[st.session_state.quiz_index]
-    st.subheader(frage["q"])
-    for a in frage["a"]:
-        if st.button(a, key=f"q_{a}"):
-            if not st.session_state.quiz_answered:
-                if a == frage["correct"]: st.session_state.quiz_score += 1; st.success("Richtig!")
-                else: st.error(f"Falsch! {frage['correct']}")
-                st.session_state.quiz_answered = True; st.rerun()
-    if st.session_state.quiz_answered:
-        st.write(f"Score: {st.session_state.quiz_score}"); (st.button("Nächste") and (setattr(st.session_state, 'quiz_index', random.randint(0, len(QUIZ_QUESTIONS)-1)) or setattr(st.session_state, 'quiz_answered', False)) or st.rerun())
+# (Andere Modi wie Space Typing etc. hier einfügen...)
