@@ -213,71 +213,121 @@ elif auswahl == "🎯 Aim-Trainer":
         c = st.columns(10); (c[random.randint(0, 9)].button("🎯", key=f"aim_{st.session_state.aim_hits}") and setattr(st.session_state, 'aim_hits', st.session_state.aim_hits + 1) or st.rerun())
     else:
         st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s"); (st.button("Reset") and setattr(st.session_state, 'aim_hits', 0) or st.rerun())
-# --- MODUS: DOODLE JUMP ---
+# --- MODUS: DOODLE JUMP (ULTRA UPDATE) ---
 elif auswahl == "🚀 Doodle Jump":
-    st.header("🚀 Space Jumper")
-    st.info("Steuerung: Benutze die **Pfeiltasten (Links/Rechts)** zum Bewegen!")
+    st.header("🚀 Space Jumper - Special Edition")
+    st.markdown("""
+    **Legende:**
+    * 🟩 **Grün:** Normaler Block
+    * ⬜ **Weiß:** Kaputter Block (verschwindet nach Kontakt!)
+    * 🟨 **Gelb:** Boost-Block (Super-Sprung!)
+    """)
     
-    doodle_jump_html = """
-    <canvas id="gameCanvas" width="400" height="600" style="border:2px solid #333; display: block; margin: 0 auto; background: #0e1117;"></canvas>
+    doodle_html = """
+    <canvas id="jumpCanvas" width="400" height="600" style="border:3px solid #444; display:block; margin:auto; background:#050510;"></canvas>
     <script>
-        const canvas = document.getElementById('gameCanvas');
+        const canvas = document.getElementById('jumpCanvas');
         const ctx = canvas.getContext('2d');
-        let score = 0;
+        
+        let player = { x: 200, y: 500, w: 35, h: 45, vy: 0, vx: 0 };
         let platforms = [];
-        let player = { x: 200, y: 500, width: 40, height: 40, vy: 0, vx: 0 };
-        let gravity = 0.2, jumpStrength = -8;
+        let score = 0;
+        let gravity = 0.25;
+        let jump = -9;
+        let keys = {};
+
+        function createPlatform(y) {
+            let typeRnd = Math.random();
+            let type = 'normal';
+            if(typeRnd > 0.85) type = 'boost';
+            else if(typeRnd > 0.70) type = 'broken';
+            
+            return { x: Math.random() * 340, y: y, w: 60, h: 12, type: type };
+        }
 
         function init() {
+            score = 0;
+            player.y = 500; player.vy = 0;
             platforms = [];
-            for(let i=0; i<7; i++) platforms.push({x: Math.random()*350, y: i*100, w: 60, h: 10});
-            player.y = 500; player.vy = 0; score = 0;
+            for(let i=0; i<8; i++) platforms.push(createPlatform(i * 75));
         }
 
         function update() {
             player.vy += gravity;
             player.y += player.vy;
-            player.x += player.vx;
+            
+            if(keys['ArrowLeft']) player.x -= 5;
+            if(keys['ArrowRight']) player.x += 5;
+            if(player.x < -30) player.x = canvas.width;
+            if(player.x > canvas.width) player.x = -30;
 
-            if(player.x < 0) player.x = canvas.width;
-            if(player.x > canvas.width) player.x = 0;
-
-            if(player.y < canvas.height/2 && player.vy < 0) {
-                platforms.forEach(p => { p.y -= player.vy; if(p.y > canvas.height) { p.y = 0; p.x = Math.random()*350; score++; }});
-                player.y = canvas.height/2;
+            // Kamera-Scroll
+            if(player.y < canvas.height / 2) {
+                let diff = canvas.height / 2 - player.y;
+                player.y = canvas.height / 2;
+                platforms.forEach(p => {
+                    p.y += diff;
+                    if(p.y > canvas.height) {
+                        score++;
+                        Object.assign(p, createPlatform(0));
+                        p.x = Math.random() * 340;
+                    }
+                });
             }
 
-            platforms.forEach(p => {
-                if(player.vy > 0 && player.x + 30 > p.x && player.x < p.x + p.w && player.y + 40 > p.y && player.y + 40 < p.y + 15) {
-                    player.vy = jumpStrength;
-                }
-            });
+            // Kollision
+            if(player.vy > 0) {
+                platforms.forEach((p, index) => {
+                    if(player.x + player.w > p.x && player.x < p.x + p.w &&
+                       player.y + player.h > p.y && player.y + player.h < p.y + 15) {
+                        
+                        if(p.type === 'boost') player.vy = jump * 1.8;
+                        else if(p.type === 'broken') {
+                            player.vy = jump;
+                            p.y = 999; // Block weg
+                        } else {
+                            player.vy = jump;
+                        }
+                    }
+                });
+            }
 
             if(player.y > canvas.height) init();
         }
 
         function draw() {
             ctx.clearRect(0,0,400,600);
-            ctx.fillStyle = '#ff8cab';
-            ctx.fillRect(player.x, player.y, player.width, player.height);
-            ctx.fillStyle = '#95f8f0';
-            platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
-            ctx.fillStyle = 'white'; ctx.font = '20px Arial';
-            ctx.fillText("Score: " + score, 10, 30);
+            
+            // Spieler (Astronaut)
+            ctx.fillStyle = '#ff4b4b'; // Anzug
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.fillStyle = '#88ccff'; // Visier
+            ctx.fillRect(player.x + 5, player.y + 10, player.w - 10, 15);
+
+            // Plattformen
+            platforms.forEach(p => {
+                if(p.type === 'boost') ctx.fillStyle = '#f1c40f';
+                else if(p.type === 'broken') ctx.fillStyle = '#ecf0f1';
+                else ctx.fillStyle = '#2ecc71';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+            });
+
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText("Score: " + score, 20, 40);
         }
 
-        document.addEventListener('keydown', e => {
-            if(e.key == 'ArrowLeft') player.vx = -4;
-            if(e.key == 'ArrowRight') player.vx = 4;
-        });
-        document.addEventListener('keyup', e => { if(e.key == 'ArrowLeft' || e.key == 'ArrowRight') player.vx = 0; });
+        window.addEventListener('keydown', e => keys[e.key] = true);
+        window.addEventListener('keyup', e => keys[e.key] = false);
 
         init();
         function loop() { update(); draw(); requestAnimationFrame(loop); }
         loop();
     </script>
     """
-    components.html(doodle_jump_html, height=650)
+    components.html(doodle_html, height=650)
+
+# (Andere Modi bleiben funktional gleich...)
 
 # (Restliche Modi wie Suche, Quiz etc. bleiben wie gehabt)
 elif auswahl == "🧠 Allgemeinwissen":
