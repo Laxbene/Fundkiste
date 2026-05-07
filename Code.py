@@ -1,4 +1,3 @@
-
 import streamlit as st
 import streamlit.components.v1 as components
 import tensorflow as tf
@@ -21,30 +20,116 @@ if not os.path.exists(IMG_FOLDER):
 
 SPACE_WORDS = ["Asteroid", "Astronaut", "Apollo", "Atmosphäre", "Antimaterie", "Alien", "Aurora", "Blackhole", "Comet", "Cosmos", "Darkmatter", "Deepspace", "Eclipse", "Exoplanet", "Galaxy", "Gravity", "Hubble", "Interstellar", "Jupiter", "Kepler", "Mars", "Meteor", "Milkyway", "Moon", "Nebula", "Neptune", "Orbit", "Orion", "Planet", "Pluto", "Rocket", "Rover", "Saturn", "Shuttle", "Star", "Supernova", "Telescope", "Universe", "Uranus", "Venus", "Voyager", "Warp", "Zenith"]
 
-QUIZ_QUESTIONS = [
-    {"q": "Was ist die Hauptstadt von Frankreich?", "a": ["Berlin", "Madrid", "Paris", "Rom"], "correct": "Paris"},
-    {"q": "Wie viele Planeten hat unser Sonnensystem?", "a": ["7", "8", "9", "10"], "correct": "8"},
-    {"q": "Wer malte die Mona Lisa?", "a": ["Picasso", "Van Gogh", "Da Vinci", "Monet"], "correct": "Da Vinci"},
-    {"q": "Welches Element hat das Symbol 'O'?", "a": ["Gold", "Sauerstoff", "Eisen", "Kohlenstoff"], "correct": "Sauerstoff"},
-    {"q": "Was ist das größte Säugetier der Welt?", "a": ["Elefant", "Blauwal", "Giraffe", "Nashorn"], "correct": "Blauwal"}
-]
+# --- UI SETUP & SPACE-STYLING ---
+st.set_page_config(page_title="Mission Control - Fundkiste Pro", layout="wide")
 
-# --- VERBESSERTE DATENBANK-FUNKTIONEN ---
+st.markdown("""
+    <style>
+    /* Hintergrund: Tiefer Weltraum */
+    .stApp {
+        background: radial-gradient(ellipse at bottom, #1B2735 0%, #090A0F 100%);
+        color: #E0E0E0;
+    }
+
+    /* Animierter Sternenhimmel */
+    @keyframes move-twinkle {
+        from { background-position: 0 0; }
+        to { background-position: -10000px 5000px; }
+    }
+    
+    .stApp::before {
+        content: "";
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: transparent url('https://www.transparenttextures.com/patterns/stardust.png') repeat;
+        z-index: -1;
+        animation: move-twinkle 200s linear infinite;
+        opacity: 0.4;
+    }
+
+    /* Sidebar als Cockpit-Panel */
+    [data-testid="stSidebar"] {
+        background-color: rgba(10, 15, 25, 0.95);
+        border-right: 1px solid #00d4ff;
+    }
+    
+    /* Überschriften im Sci-Fi Look */
+    h1, h2, h3 {
+        color: #00d4ff !important;
+        font-family: 'Courier New', monospace;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        text-shadow: 0px 0px 10px rgba(0, 212, 255, 0.5);
+    }
+
+    /* Buttons */
+    div.stButton > button {
+        border: 1px solid #00d4ff;
+        background: rgba(0, 212, 255, 0.1);
+        color: #00d4ff;
+        border-radius: 4px;
+        transition: all 0.3s;
+    }
+    
+    div.stButton > button:hover {
+        background: #00d4ff;
+        color: #000;
+        box-shadow: 0px 0px 20px #00d4ff;
+    }
+
+    /* Input Felder */
+    .stTextInput input {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        color: white !important;
+        border: 1px solid #444 !important;
+    }
+    </style>
+    
+    <!-- Maus-Partikel Effekt -->
+    <canvas id="starCanvas" style="position: fixed; top: 0; left: 0; pointer-events: none; z-index: 9999;"></canvas>
+    <script>
+        const canvas = document.getElementById('starCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        let stars = [];
+
+        window.addEventListener('mousemove', (e) => {
+            for(let i=0; i<2; i++) {
+                stars.push({
+                    x: e.clientX,
+                    y: e.clientY,
+                    size: Math.random() * 2 + 1,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    alpha: 1
+                });
+            }
+        });
+
+        function drawStars() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            stars.forEach((s, i) => {
+                s.x += s.vx; s.y += s.vy; s.alpha -= 0.015;
+                if(s.alpha <= 0) stars.splice(i, 1);
+                ctx.fillStyle = `rgba(0, 212, 255, ${s.alpha})`;
+                ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill();
+            });
+            requestAnimationFrame(drawStars);
+        }
+        drawStars();
+    </script>
+    """, unsafe_allow_html=True)
+
+# --- DATENBANK FUNKTIONEN ---
 def get_database():
     if os.path.exists(DB_FILE):
-        try:
-            return pd.read_csv(DB_FILE)
-        except Exception as e:
-            st.error(f"Fehler beim Laden der DB: {e}")
-            # Backup bei Korruption
-            return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
+        try: return pd.read_csv(DB_FILE)
+        except: return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
     return pd.DataFrame(columns=["ID", "Kategorie", "Funddatum", "Ablaufdatum", "Status", "Bild_Pfad"])
 
 def save_database(df):
-    try:
-        df.to_csv(DB_FILE, index=False)
-    except Exception as e:
-        st.error(f"Speichern fehlgeschlagen: {e}")
+    df.to_csv(DB_FILE, index=False)
 
 def delete_entry(entry_id):
     df = get_database()
@@ -70,119 +155,121 @@ def load_labels(label_path):
             if len(p) == 2: d[int(p[0])] = p[1]
     return d
 
-# --- UI SETUP ---
-st.set_page_config(page_title="Fundkiste Pro 2026", layout="wide")
 model = load_my_model()
 labels = load_labels("labels.txt")
 
-st.sidebar.title("🏢 Zentrale")
-auswahl = st.sidebar.selectbox("Navigation", 
-    ["📸 Erfassen", "📊 Datenbank", "📋 Kategorien-Galerie", "🔍 Suche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen", "🚀 Doodle Jump"])
+# --- SIDEBAR: MISSION CONTROL ---
+st.sidebar.title("🚀 MISSION CONTROL")
+st.sidebar.markdown(f"**Sektor:** Erdorbit-Zentrale  \n**Status:** Online  \n**Stardate:** {HEUTE}")
 
-# --- MODUS: ERFASSEN ---
-if auswahl == "📸 Erfassen":
-    st.header("📸 Neues Fundstück erfassen")
-    uploaded_file = st.file_uploader("Bild hochladen", type=["jpg", "png", "jpeg"])
+auswahl = st.sidebar.selectbox("Terminal-Zugriff", 
+    ["🔍 Scan-Modul", "📊 Archiv-Terminal", "📋 Inventar-Matrix", "🔦 Fernsuche", "🎮 Space Typing", "⚡ Reaktionstest", "🎯 Aim-Trainer", "🧠 Allgemeinwissen", "🚀 Space Jumper"])
+
+if st.sidebar.button("🚨 EJECT-KNOPF"):
+    st.toast("System-Kern wird heruntergefahren...", icon="⚠️")
+    time.sleep(1)
+    st.rerun()
+
+# --- MODUS: SCAN-MODUL (Erfassen) ---
+if auswahl == "🔍 Scan-Modul":
+    st.header("🔍 Objekt-Scan")
+    uploaded_file = st.file_uploader("Daten-Input (Bild)", type=["jpg", "png", "jpeg"])
+    
     if uploaded_file and model:
         image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Vorschau", width=300)
-        img_resized = ImageOps.fit(image, (224, 224), Image.LANCZOS)
-        img_array = (np.asarray(img_resized).astype(np.float32) / 127.5) - 1
-        pred = model.predict(np.expand_dims(img_array, axis=0))
-        idx = np.argmax(pred)
-        confidence = pred[0][idx]
+        st.image(image, caption="Erfasstes Objekt", width=350)
         
-        if confidence < CONFIDENCE_THRESHOLD:
-            st.warning(f"⚠️ Nicht eindeutig erkannt ({confidence:.1%}).")
-            klasse, can_save = "Nicht erkannt", False
-        else:
-            klasse, can_save = labels.get(idx, "Unbekannt"), True
-            st.success(f"✅ Erkannt: **{klasse}** ({confidence:.1%})")
-        
-        with st.form("save_form"):
+        with st.spinner("Molekular-Analyse läuft..."):
+            img_resized = ImageOps.fit(image, (224, 224), Image.LANCZOS)
+            img_array = (np.asarray(img_resized).astype(np.float32) / 127.5) - 1
+            pred = model.predict(np.expand_dims(img_array, axis=0))
+            idx = np.argmax(pred)
+            confidence = pred[0][idx]
+            
+            if confidence < CONFIDENCE_THRESHOLD:
+                st.warning(f"⚠️ Signatur unklar ({confidence:.1%}).")
+                klasse = "Unbekannt"
+            else:
+                klasse = labels.get(idx, "Unbekannt")
+                st.success(f"✅ Signatur erkannt: **{klasse}** ({confidence:.1%})")
+
+        with st.form("save_form_space"):
             k_liste = list(labels.values())
-            if "Nicht erkannt" not in k_liste: k_liste.append("Nicht erkannt")
-            final_klasse = st.selectbox("Kategorie", k_liste, index=k_liste.index(klasse))
-            beschreibung = st.text_input("Zusatz-Info (Farbe, Marke...)")
-            submit = st.form_submit_button("Speichern")
-            if submit:
+            if "Unbekannt" not in k_liste: k_liste.append("Unbekannt")
+            final_klasse = st.selectbox("Kategorie-Bestätigung", k_liste, index=k_liste.index(klasse) if klasse in k_liste else 0)
+            beschreibung = st.text_input("Zusatz-Spezifikationen")
+            if st.form_submit_button("💾 Im Archiv speichern"):
                 img_path = os.path.join(IMG_FOLDER, f"{int(time.time())}.jpg")
                 image.save(img_path)
                 df = get_database()
                 neu = {"ID": int(time.time()), "Kategorie": final_klasse, "Funddatum": HEUTE, "Ablaufdatum": HEUTE+timedelta(days=30), "Status": beschreibung, "Bild_Pfad": img_path}
                 save_database(pd.concat([df, pd.DataFrame([neu])], ignore_index=True))
-                st.success("In Datenbank archiviert!")
+                st.balloons()
+                st.success("Eintrag in die Matrix übernommen!")
 
-# --- MODUS: DATENBANK ---
-elif auswahl == "📊 Datenbank":
-    st.header("📊 Alle Fundstücke")
+# --- MODUS: ARCHIV-TERMINAL (Datenbank) ---
+elif auswahl == "📊 Archiv-Terminal":
+    st.header("📊 Zentrales Archiv")
     df = get_database()
     if not df.empty:
         for _, row in df.iterrows():
-            c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
+            c1, c2, c3 = st.columns([1, 3, 1])
             with c1:
-                path = str(row['Bild_Pfad'])
-                if os.path.exists(path): st.image(path, width=120)
-                else: st.write("🖼️")
-            with c2: st.write(f"**{row['Kategorie']}**\n\n_{row['Status']}_")
-            with c3: st.write(f"📅 Fund: {row['Funddatum']}\n\n⏰ Ablauf: {row['Ablaufdatum']}")
-            with c4: 
-                if st.button("✅ Abgeholt", key=f"del_{row['ID']}"):
+                if os.path.exists(str(row['Bild_Pfad'])): st.image(row['Bild_Pfad'], width=120)
+            with c2:
+                st.write(f"### {row['Kategorie']}")
+                st.write(f"**Info:** {row['Status']} | **Ablauf:** {row['Ablaufdatum']}")
+            with c3:
+                if st.button("✅ Recovery", key=f"del_{row['ID']}"):
                     delete_entry(row['ID']); st.rerun()
             st.divider()
+    else:
+        st.info("Das Archiv ist derzeit leer.")
 
-# --- NEU: MODUS: KATEGORIEN-GALERIE (MIT BILDERN) ---
-elif auswahl == "📋 Kategorien-Galerie":
-    st.header("📋 Inventar nach Kategorien")
+# --- MODUS: INVENTAR-MATRIX (Galerie) ---
+elif auswahl == "📋 Inventar-Matrix":
+    st.header("📋 Inventar-Matrix")
     df = get_database()
-    
     if not df.empty:
         kategorien = sorted(df['Kategorie'].unique())
         for kat in kategorien:
-            with st.expander(f"📁 {kat.upper()} ({len(df[df['Kategorie']==kat])} Items)", expanded=True):
+            with st.expander(f"📁 SEKTOR: {kat.upper()}", expanded=True):
                 kat_items = df[df['Kategorie'] == kat]
-                
-                # Wir erstellen ein Grid mit 4 Spalten für die Bilder
                 cols = st.columns(4)
                 for i, (_, item) in enumerate(kat_items.iterrows()):
                     with cols[i % 4]:
-                        path = str(item['Bild_Pfad'])
-                        if os.path.exists(path):
-                            st.image(path, use_container_width=True)
-                        else:
-                            st.write("🖼️ Bild fehlt")
-                        st.caption(f"📅 {item['Funddatum']}")
-                        st.write(f"**{item['Status']}**")
-                        if st.button("✅ Weg", key=f"kat_del_{item['ID']}"):
-                            delete_entry(item['ID'])
-                            st.rerun()
+                        if os.path.exists(str(item['Bild_Pfad'])): st.image(item['Bild_Pfad'], use_container_width=True)
+                        st.caption(f"Datum: {item['Funddatum']}")
+                        if st.button("Löschen", key=f"mat_del_{item['ID']}"):
+                            delete_entry(item['ID']); st.rerun()
     else:
-        st.info("Keine Daten vorhanden.")
+        st.info("Keine Daten in der Matrix.")
 
-# --- MODUS: SUCHE ---
-elif auswahl == "🔍 Suche":
-    st.header("🔍 Schnellsuche")
-    query = st.text_input("Suchbegriff...")
+# --- MODUS: FERN-SUCHE ---
+elif auswahl == "🔦 Fernsuche":
+    st.header("🔦 Deep Scan Suche")
+    query = st.text_input("Suchbegriff eingeben...")
     df = get_database()
     if query and not df.empty:
         res = df[df.apply(lambda r: query.lower() in r.astype(str).str.lower().values, axis=1)]
         st.dataframe(res, use_container_width=True)
 
-# --- SPIELE SEKTION ---
+# --- SPIELE: SPACE TYPING ---
 elif auswahl == "🎮 Space Typing":
     st.header("☄️ Space Typer")
     if 'input_key' not in st.session_state: st.session_state.input_key = 0
     if 'game_active' not in st.session_state: st.session_state.game_active = False
+    
     if not st.session_state.game_active:
-        if st.button("Start"):
+        if st.button("Triebwerke starten"):
             st.session_state.game_active, st.session_state.lives, st.session_state.score, st.session_state.current_word, st.session_state.start_time = True, 3, 0, random.choice(SPACE_WORDS), time.time()
             st.rerun()
     else:
         rest = max(0.0, 7.0 - (time.time() - st.session_state.start_time))
-        st.write(f"### Wort: :orange[{st.session_state.current_word}] | ❤️ {st.session_state.lives} | ⭐ {st.session_state.score}")
+        st.write(f"### Ziel: :orange[{st.session_state.current_word}] | ❤️ {st.session_state.lives} | ⭐ {st.session_state.score}")
         st.progress(rest / 7.0)
         fid = f"typer_{st.session_state.input_key}"
-        ui = st.text_input("Tippen:", key=fid).strip()
+        ui = st.text_input("Eingabe:", key=fid).strip()
         components.html(f"<script>window.parent.document.querySelector('input[id*=\"{fid}\"]').focus();</script>", height=0)
         if ui.lower() == st.session_state.current_word.lower():
             st.session_state.score += 10; st.session_state.current_word = random.choice(SPACE_WORDS); st.session_state.start_time = time.time(); st.session_state.input_key += 1; st.rerun()
@@ -192,137 +279,69 @@ elif auswahl == "🎮 Space Typing":
             st.rerun()
         time.sleep(0.1); st.rerun()
 
+# --- SPIELE: REAKTIONSTEST ---
 elif auswahl == "⚡ Reaktionstest":
-    st.header("⚡ Reaktionstest")
+    st.header("⚡ Notfall-Reaktion")
     if 'rxn_state' not in st.session_state: st.session_state.rxn_state = "idle"
     if st.session_state.rxn_state == "idle":
-        if st.button("Start"): st.session_state.rxn_state = "waiting"; st.session_state.wait_until = time.time() + random.uniform(2, 5); st.rerun()
+        if st.button("Test starten"): st.session_state.rxn_state = "waiting"; st.session_state.wait_until = time.time() + random.uniform(2, 5); st.rerun()
     elif st.session_state.rxn_state == "waiting":
-        st.error("### WARTEN..."); (time.sleep(0.05) or st.rerun()) if time.time() < st.session_state.wait_until else (setattr(st.session_state, 'rxn_state', 'go') or setattr(st.session_state, 'go_start', time.time()) or st.rerun())
+        st.error("### WARTEN AUF SIGNAL..."); (time.sleep(0.05) or st.rerun()) if time.time() < st.session_state.wait_until else (setattr(st.session_state, 'rxn_state', 'go') or setattr(st.session_state, 'go_start', time.time()) or st.rerun())
     elif st.session_state.rxn_state == "go":
-        if st.button("KLICK!"): st.session_state.last_res = (time.time() - st.session_state.go_start)*1000; st.session_state.rxn_state = "result"; st.rerun()
+        if st.button("JETZT KLICKEN!"): st.session_state.last_res = (time.time() - st.session_state.go_start)*1000; st.session_state.rxn_state = "result"; st.rerun()
     elif st.session_state.rxn_state == "result":
-        st.write(f"## {st.session_state.last_res:.0f} ms"); (st.button("Nochmal") and setattr(st.session_state, 'rxn_state', 'idle') or st.rerun())
+        st.write(f"## {st.session_state.last_res:.0f} ms"); (st.button("Neustart") and setattr(st.session_state, 'rxn_state', 'idle') or st.rerun())
 
-elif auswahl == "🎯 Aim-Trainer":
-    st.header("🎯 Aim-Trainer")
-    if 'aim_hits' not in st.session_state: st.session_state.aim_hits = 0
-    if st.session_state.aim_hits == 0:
-        if st.button("Start"): st.session_state.aim_hits = 1; st.session_state.aim_start = time.time(); st.rerun()
-    elif st.session_state.aim_hits <= 10:
-        c = st.columns(10); (c[random.randint(0, 9)].button("🎯", key=f"aim_{st.session_state.aim_hits}") and setattr(st.session_state, 'aim_hits', st.session_state.aim_hits + 1) or st.rerun())
-    else:
-        st.write(f"## Zeit: {time.time()-st.session_state.aim_start:.2f}s"); (st.button("Reset") and setattr(st.session_state, 'aim_hits', 0) or st.rerun())
-        
-# --- MODUS: DOODLE JUMP (FAIR-PLAY UPDATE) ---
-elif auswahl == "🚀 Doodle Jump":
-    st.header("🚀 Space Jumper - Pro Edition")
-    st.info("Steuerung: Pfeiltasten LINKS/RECHTS. Jede Lücke ist springbar!")
-    
+# --- SPIELE: DOODLE JUMP (Space Jumper) ---
+elif auswahl == "🚀 Space Jumper":
+    st.header("🚀 Space Jumper")
     doodle_html = """
-    <canvas id="gameCanvas" width="400" height="600" style="border:3px solid #444; display:block; margin:auto; background:#fcf5f9;"></canvas>
+    <canvas id="gameCanvas" width="400" height="600" style="border:3px solid #00d4ff; display:block; margin:auto; background:#050505;"></canvas>
     <script>
         const canvas = document.getElementById('gameCanvas'), ctx = canvas.getContext('2d');
         let player = { x: 180, y: 450, w: 35, h: 45, vy: 0, vx: 0 };
         let platforms = [], score = 0, keys = {};
-        const gravity = 0.25, jumpPower = -9.5; // Leicht erhöhte Sprungkraft für Sicherheit
+        const gravity = 0.25, jumpPower = -9.5;
 
         function createPlatform(y, isBase=false) {
-            let type = 'normal';
-            if(!isBase) {
-                let r = Math.random();
-                if(r > 0.90) type = 'boost'; 
-                else if(r > 0.75) type = 'broken';
-            } else type = 'base';
-            
-            // x-Position so wählen, dass sie nicht zu weit am Rand klebt
             let x = isBase ? 100 : Math.random() * 320; 
-            return { x: x, y: y, w: isBase ? 200 : 70, h: 12, type: type };
+            return { x: x, y: y, w: isBase ? 200 : 70, h: 12, type: (Math.random() > 0.9 && !isBase) ? 'boost' : 'normal' };
         }
 
         function init() {
             score = 0; player.x = 180; player.y = 450; player.vy = 0;
-            platforms = [];
-            // Bodenplatte
-            platforms.push(createPlatform(550, true));
-            // Plattformen mit festem Maximalabstand (max 85 Pixel vertikal)
-            // Das garantiert, dass man mit jumpPower (-9.5) immer hochkommt
-            for(let i=0; i<7; i++) {
-                platforms.push(createPlatform(550 - (i + 1) * 85));
-            }
+            platforms = []; platforms.push(createPlatform(550, true));
+            for(let i=0; i<7; i++) platforms.push(createPlatform(550 - (i + 1) * 85));
         }
 
         function update() {
-            player.vy += gravity;
-            player.y += player.vy;
-            
-            if(keys['ArrowLeft']) player.vx = -5;
-            else if(keys['ArrowRight']) player.vx = 5;
-            else player.vx *= 0.8; // Sanftes Abbremsen
-            
+            player.vy += gravity; player.y += player.vy;
+            if(keys['ArrowLeft']) player.vx = -5; else if(keys['ArrowRight']) player.vx = 5; else player.vx *= 0.8;
             player.x += player.vx;
-
-            // Wrap-around
-            if(player.x < -30) player.x = canvas.width;
-            if(player.x > canvas.width) player.x = -30;
-
-            // Kamera-Follow
+            if(player.x < -30) player.x = canvas.width; if(player.x > canvas.width) player.x = -30;
             if(player.y < 250) {
-                let delta = 250 - player.y;
-                player.y = 250;
-                platforms.forEach(p => {
-                    p.y += delta;
-                    if(p.y > 600) {
-                        score++;
-                        // Neue Plattform immer oben im Bereich 0-20px generieren
-                        Object.assign(p, createPlatform(p.y - 600));
-                    }
-                });
+                let d = 250 - player.y; player.y = 250;
+                platforms.forEach(p => { p.y += d; if(p.y > 600) { score++; Object.assign(p, createPlatform(p.y - 600)); } });
             }
-
-            // Kollision (nur beim Runterfallen)
             if(player.vy > 0) {
                 platforms.forEach(p => {
-                    if(player.x + player.w > p.x && player.x < p.x + p.w &&
-                       player.y + player.h > p.y && player.y + player.h < p.y + 15) {
-                        
-                        if(p.type === 'boost') {
-                            player.vy = jumpPower * 1.8;
-                        } else if(p.type === 'broken') {
-                            player.vy = jumpPower;
-                            p.y = 1000; // Block "zerstört"
-                        } else {
-                            player.vy = jumpPower;
-                        }
+                    if(player.x + player.w > p.x && player.x < p.x + p.w && player.y + player.h > p.y && player.y + player.h < p.y + 15) {
+                        player.vy = p.type === 'boost' ? jumpPower * 2 : jumpPower;
                     }
                 });
             }
-
-            if(player.y > 600) init(); // Game Over
+            if(player.y > 600) init();
         }
 
         function draw() {
             ctx.clearRect(0,0,canvas.width,canvas.height);
-            
-            // Astronaut zeichnen
-            ctx.fillStyle = '#ff4b4b'; ctx.fillRect(player.x, player.y, player.w, player.h);
-            ctx.fillStyle = '#88ccff'; ctx.fillRect(player.x+5, player.y+8, player.w-10, 15);
-
-            // Blöcke zeichnen
-            platforms.forEach(p => {
-                if(p.type==='boost') ctx.fillStyle='#f1c40f';
-                else if(p.type==='broken') ctx.fillStyle='#ffffff';
-                else ctx.fillStyle='#2ecc71';
-                ctx.fillRect(p.x, p.y, p.w, p.h);
-            });
-
-            ctx.fillStyle = '#03396c'; ctx.font = 'bold 20px Courier';
-            ctx.fillText("SCORE: " + score, 20, 40);
+            ctx.fillStyle = '#00d4ff'; ctx.fillRect(player.x, player.y, player.w, player.h);
+            platforms.forEach(p => { ctx.fillStyle = p.type === 'boost' ? '#f1c40f' : '#2ecc71'; ctx.fillRect(p.x, p.y, p.w, p.h); });
+            ctx.fillStyle = 'white'; ctx.font = '20px Arial'; ctx.fillText("Score: " + score, 20, 40);
         }
 
         window.onkeydown = e => { keys[e.key] = true; if(e.key.includes("Arrow")) e.preventDefault(); };
         window.onkeyup = e => keys[e.key] = false;
-
         init();
         function main() { update(); draw(); requestAnimationFrame(main); }
         main();
